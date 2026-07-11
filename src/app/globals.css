@@ -1,0 +1,144 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cyber-bg: #030712;
+  --color-cyber-dark: #080f21;
+  --color-cyber-card: #0d1527;
+  --color-cyber-cyan: #00f0ff;
+  --color-cyber-green: #10b981;
+  --color-cyber-neon-green: #39ff14;
+  --color-cyber-amber: #f59e0b;
+  --color-cyber-red: #ef4444;
+  --color-cyber-border: #1e293b;
+  --color-cyber-grid: rgba(0, 240, 255, 0.04);
+  
+  --shadow-neon-cyan: 0 0 10px rgba(0, 240, 255, 0.25), 0 0 20px rgba(0, 240, 255, 0.1);
+  --shadow-neon-green: 0 0 10px rgba(16, 185, 129, 0.25);
+  --shadow-neon-red: 0 0 10px rgba(239, 68, 68, 0.25);
+}
+
+:root {
+  --background: #030712;
+  --foreground: #f3f4f6;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  overflow-x: hidden;
+  background-image: 
+    linear-gradient(to right, rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Custom Scrollbar for tactical aesthetic */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #080f21;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #00f0ff;
+}
+
+/* Military Scanlines Effect (subtle overlay) */
+.scanline-bg {
+  position: relative;
+}
+
+.scanline-bg::before {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+  z-index: 10;
+  background-size: 100% 4px, 6px 100%;
+  pointer-events: none;
+  opacity: 0.15;
+}
+
+/* Tech card corner clips */
+.clip-corners {
+  clip-path: polygon(
+    0px 0px, 
+    calc(100% - 12px) 0px, 
+    100% 12px, 
+    100% 100%, 
+    12px 100%, 
+    0px calc(100% - 12px)
+  );
+}
+
+.clip-corners-sm {
+  clip-path: polygon(
+    0px 0px, 
+    calc(100% - 6px) 0px, 
+    100% 6px, 
+    100% 100%, 
+    6px 100%, 
+    0px calc(100% - 6px)
+  );
+}
+
+/* Glassmorphism tactical panels */
+.tactical-panel {
+  background: rgba(13, 21, 39, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(0, 240, 255, 0.15);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);
+}
+
+.tactical-panel:hover {
+  border-color: rgba(0, 240, 255, 0.35);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4), 0 0 15px rgba(0, 240, 255, 0.05);
+}
+
+/* Glowing Neon Texts */
+.text-glow-cyan {
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.6);
+}
+
+.text-glow-green {
+  text-shadow: 0 0 8px rgba(57, 255, 20, 0.6);
+}
+
+/* Military Grid Overlay */
+.hud-grid {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  background-size: 20px 20px;
+  background-image: 
+    radial-gradient(circle, rgba(0, 240, 255, 0.1) 1px, transparent 1px);
+  opacity: 0.3;
+}
+
+@keyframes pulse-cyan {
+  0%, 100% {
+    opacity: 0.6;
+    box-shadow: 0 0 5px rgba(0, 240, 255, 0.2);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.6), 0 0 5px rgba(0, 240, 255, 0.3);
+  }
+}
+
+.glow-pulse-cyan {
+  animation: pulse-cyan 2s infinite alternate;
+}
