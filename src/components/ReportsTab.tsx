@@ -153,11 +153,11 @@ CREATE TABLE public.orders (
 ALTER TABLE public.gamers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 
--- Simple public access policy (Modify in production)
-CREATE POLICY "Allow public read access" ON public.gamers FOR SELECT USING (true);
-CREATE POLICY "Allow public write access" ON public.gamers FOR ALL USING (true);
-CREATE POLICY "Allow public read access" ON public.orders FOR SELECT USING (true);
-CREATE POLICY "Allow public write access" ON public.orders FOR ALL USING (true);`;
+-- Authenticated users access policy (Secure for authenticated employees/ops)
+CREATE POLICY "Allow authenticated read access" ON public.gamers FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated write access" ON public.gamers FOR ALL TO authenticated USING (true);
+CREATE POLICY "Allow authenticated read access" ON public.orders FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated write access" ON public.orders FOR ALL TO authenticated USING (true);`;
 
   const envTemplate = `NEXT_PUBLIC_SUPABASE_URL=your-supabase-project-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
