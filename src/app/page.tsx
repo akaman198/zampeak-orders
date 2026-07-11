@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 
 export default function Home() {
-  const { user, role, gamerProfile, loading, authLoading, isDemo, signIn, signUp, signOut, updatePassword } = useApp();
+  const { user, role, gamerProfile, loading, authLoading, isDemo, gamers, orders, signIn, signUp, signOut, updatePassword } = useApp();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'gamers' | 'orders' | 'reports'>('dashboard');
 
   // Auth Screen States
@@ -99,7 +99,8 @@ export default function Home() {
   };
 
   // Loading Screen
-  if (authLoading || (user && loading)) {
+  const isInitialLoading = authLoading || (user && loading && gamers.length === 0 && orders.length === 0);
+  if (isInitialLoading) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-cyber-bg text-cyber-cyan font-mono min-h-screen">
         <div className="relative w-24 h-24 flex items-center justify-center">
