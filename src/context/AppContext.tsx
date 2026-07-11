@@ -59,7 +59,7 @@ const getEmailFromInput = (input: string): string => {
   if (trimmed.includes('@')) {
     return trimmed;
   }
-  return `${trimmed.toLowerCase()}@zampeak.local`;
+  return `${trimmed.toLowerCase()}@gamers.zampeak.com`;
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -233,7 +233,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (emailOrEmpId: string, password: string, defaultPassword?: string) => {
     const signupEmail = getEmailFromInput(emailOrEmpId);
-    const isGamer = signupEmail.endsWith('@zampeak.local');
+    const isGamer = signupEmail.endsWith('@gamers.zampeak.com');
 
     if (isGamer) {
       const empId = emailOrEmpId.trim().toUpperCase();
@@ -323,7 +323,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Gamers operations
   const addGamer = async (name: string, employeeId: string, defaultPassword: string, phone?: string) => {
     const cleanEmpId = employeeId.trim().toUpperCase();
-    const syntheticEmail = `${cleanEmpId.toLowerCase()}@zampeak.local`;
+    const syntheticEmail = `${cleanEmpId.toLowerCase()}@gamers.zampeak.com`;
 
     const newGamer: Gamer = {
       id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11),
@@ -363,7 +363,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     status?: 'active' | 'inactive'
   ) => {
     const cleanEmpId = employeeId.trim().toUpperCase();
-    const syntheticEmail = `${cleanEmpId.toLowerCase()}@zampeak.local`;
+    const syntheticEmail = `${cleanEmpId.toLowerCase()}@gamers.zampeak.com`;
 
     if (!isDemo && supabase) {
       try {
