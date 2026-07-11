@@ -47,7 +47,7 @@ export default function GamersTab() {
       return;
     }
 
-    const res = await addGamer(name.trim(), employeeId.trim(), email.trim(), phone.trim());
+    const res = await addGamer(name.trim(), employeeId.trim(), phone.trim());
     if (res.success) {
       setIsAdding(false);
       resetForm();
@@ -64,7 +64,7 @@ export default function GamersTab() {
       return;
     }
 
-    const res = await updateGamer(isEditing.id, name.trim(), employeeId.trim(), email.trim(), phone.trim(), status);
+    const res = await updateGamer(isEditing.id, name.trim(), employeeId.trim(), phone.trim(), status);
     if (res.success) {
       if (selectedGamer?.id === isEditing.id) {
         setSelectedGamer({ ...selectedGamer, name, employee_id: employeeId, email, phone, status });

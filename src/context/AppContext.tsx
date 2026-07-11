@@ -14,15 +14,14 @@ interface AppContextType {
   loading: boolean;
   authLoading: boolean;
   isDemo: boolean;
-  signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  signUp: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signIn: (emailOrEmpId: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signUp: (emailOrEmpId: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
-  addGamer: (name: string, employeeId: string, email?: string, phone?: string) => Promise<{ success: boolean; error?: string }>;
+  addGamer: (name: string, employeeId: string, phone?: string) => Promise<{ success: boolean; error?: string }>;
   updateGamer: (
     id: string,
     name: string,
     employeeId: string,
-    email?: string,
     phone?: string,
     status?: 'active' | 'inactive'
   ) => Promise<{ success: boolean; error?: string }>;
@@ -53,6 +52,15 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
+
+// Helper to convert Employee ID to Synthetic Email
+const getEmailFromInput = (input: string): string => {
+  const trimmed = input.trim();
+  if (trimmed.includes('@')) {
+    return trimmed; // It's an admin email
+  }
+  return `${trimmed.toLowerCase()}@zampeak.local`; // Synthetic gamer email
+};
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -122,7 +130,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Determine user role and matched gamer profile after data load
   useEffect(() => {
     if (user) {
-      const matchedGamer = gamers.find(g => g.email?.toLowerCase() === user.email?.toLowerCase());
+      const emailLower = user.email?.toLowerCase() || '';
+      const matchedGamer = gamers.find(g => g.email?.toLowerCase() === emailLower);
       if (matchedGamer) {
         setRole('gamer');
         setGamerProfile(matchedGamer);
@@ -188,10 +197,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   // Auth Operations
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (emailOrEmpId: string, password: string) => {
+    const loginEmail = getEmailFromInput(emailOrEmpId);
+
     if (!isDemo && supabase) {
       try {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
         if (error) throw error;
         setUser(data.user);
         return { success: true };
@@ -201,33 +212,66 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     } else {
       // Local Demo Auth
-      if (email === 'admin@zampeak.com' && password === 'admin123') {
-        const mockUser = { id: 'demo-user-id', email } as User;
+      if (loginEmail === 'admin@zampeak.com' && password === 'admin123') {
+        const mockUser = { id: 'demo-user-id', email: loginEmail } as User;
         setUser(mockUser);
         sessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
         return { success: true };
       } else {
-        // Allow registering a demo gamer login for testing role switching locally!
+        // Find match in local storage gamers
         const savedGamers = localStorage.getItem('zampeak_gamers');
         if (savedGamers) {
           const localGamers: Gamer[] = JSON.parse(savedGamers);
-          const matched = localGamers.find(g => g.email?.toLowerCase() === email.toLowerCase());
+          const matched = localGamers.find(g => g.email?.toLowerCase() === loginEmail.toLowerCase());
           if (matched && password === 'gamer123') {
-            const mockUser = { id: matched.id, email } as User;
+            const mockUser = { id: matched.id, email: loginEmail } as User;
             setUser(mockUser);
             sessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
             return { success: true };
           }
         }
-        return { success: false, error: 'Invalid credentials. Demo defaults: admin@zampeak.com / admin123. Or gamer email with password gamer123' };
+        return { success: false, error: 'Invalid credentials. Demo admin defaults: admin@zampeak.com / admin123. Or gamer employee ID with password gamer123' };
       }
     }
   };
 
-  const signUp = async (email: string, password: string) => {
+  const signUp = async (emailOrEmpId: string, password: string) => {
+    const signupEmail = getEmailFromInput(emailOrEmpId);
+    const isGamer = signupEmail.endsWith('@zampeak.local');
+
+    // Secure Gate: If signing up as a gamer, Employee ID must be registered beforehand by Admin
+    if (isGamer) {
+      const empId = emailOrEmpId.trim().toUpperCase();
+      let matchedGamerExists = false;
+
+      if (!isDemo && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from('gamers')
+            .select('id')
+            .eq('employee_id', empId);
+          
+          if (error) throw error;
+          matchedGamerExists = data && data.length > 0;
+        } catch (err: any) {
+          return { success: false, error: `Database validation error: ${err.message}` };
+        }
+      } else {
+        const savedGamers = localStorage.getItem('zampeak_gamers');
+        if (savedGamers) {
+          const localGamers: Gamer[] = JSON.parse(savedGamers);
+          matchedGamerExists = localGamers.some(g => g.employee_id.toUpperCase() === empId);
+        }
+      }
+
+      if (!matchedGamerExists) {
+        return { success: false, error: `Employee ID "${empId}" is not registered in the system. Contact Admin.` };
+      }
+    }
+
     if (!isDemo && supabase) {
       try {
-        const { data, error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({ email: signupEmail, password });
         if (error) throw error;
         if (data.user) {
           setUser(data.user);
@@ -238,7 +282,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { success: false, error: err.message };
       }
     } else {
-      const mockUser = { id: Math.random().toString(), email } as User;
+      const mockUser = { id: Math.random().toString(), email: signupEmail } as User;
       setUser(mockUser);
       sessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
       return { success: true };
@@ -259,12 +303,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   // Gamers operations
-  const addGamer = async (name: string, employeeId: string, email?: string, phone?: string) => {
+  const addGamer = async (name: string, employeeId: string, phone?: string) => {
+    const cleanEmpId = employeeId.trim().toUpperCase();
+    const syntheticEmail = `${cleanEmpId.toLowerCase()}@zampeak.local`;
+
     const newGamer: Gamer = {
       id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11),
       name,
-      employee_id: employeeId,
-      email: email || '',
+      employee_id: cleanEmpId,
+      email: syntheticEmail,
       phone: phone || '',
       status: 'active',
       created_at: new Date().toISOString(),
@@ -292,13 +339,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     id: string,
     name: string,
     employeeId: string,
-    email?: string,
     phone?: string,
     status?: 'active' | 'inactive'
   ) => {
+    const cleanEmpId = employeeId.trim().toUpperCase();
+    const syntheticEmail = `${cleanEmpId.toLowerCase()}@zampeak.local`;
+
     if (!isDemo && supabase) {
       try {
-        const updates: Partial<Gamer> = { name, employee_id: employeeId, email: email || '', phone: phone || '' };
+        const updates: Partial<Gamer> = { 
+          name, 
+          employee_id: cleanEmpId, 
+          email: syntheticEmail,
+          phone: phone || '' 
+        };
         if (status) updates.status = status;
 
         const { error } = await supabase.from('gamers').update(updates).eq('id', id);
@@ -315,7 +369,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       const updated = gamers.map((g) =>
         g.id === id
-          ? { ...g, name, employee_id: employeeId, email: email || '', phone: phone || '', status: status || g.status }
+          ? { 
+              ...g, 
+              name, 
+              employee_id: cleanEmpId, 
+              email: syntheticEmail,
+              phone: phone || '', 
+              status: status || g.status 
+            }
           : g
       );
       setGamers(updated);

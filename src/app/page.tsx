@@ -19,12 +19,12 @@ import {
 } from 'lucide-react';
 
 export default function Home() {
-  const { user, role, loading, authLoading, isDemo, signIn, signUp, signOut } = useApp();
+  const { user, role, gamerProfile, loading, authLoading, isDemo, signIn, signUp, signOut } = useApp();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'gamers' | 'orders' | 'reports'>('dashboard');
 
   // Auth Screen States
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
-  const [email, setEmail] = useState('');
+  const [emailOrEmpId, setEmailOrEmpId] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [authSubmitting, setAuthSubmitting] = useState(false);
@@ -38,8 +38,8 @@ export default function Home() {
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password) {
-      setAuthError('Email and Password fields are required.');
+    if (!emailOrEmpId.trim() || !password) {
+      setAuthError('Access identifier and password key are required.');
       return;
     }
     setAuthError('');
@@ -47,8 +47,8 @@ export default function Home() {
 
     try {
       const res = authMode === 'signin' 
-        ? await signIn(email.trim(), password)
-        : await signUp(email.trim(), password);
+        ? await signIn(emailOrEmpId.trim(), password)
+        : await signUp(emailOrEmpId.trim(), password);
 
       if (!res.success) {
         setAuthError(res.error || 'Authentication failed.');
@@ -102,7 +102,7 @@ export default function Home() {
 
           <form onSubmit={handleAuthSubmit} className="space-y-4 text-xs">
             {authError && (
-              <div className="p-3 border border-cyber-red/30 bg-cyber-red/10 text-cyber-red rounded font-bold text-center">
+              <div className="p-3 border border-cyber-red/30 bg-cyber-red/10 text-cyber-red rounded font-bold text-center leading-relaxed">
                 [ACCESS DENIED]: {authError}
               </div>
             )}
@@ -111,18 +111,20 @@ export default function Home() {
               <div className="p-3 border border-cyber-amber/35 bg-cyber-amber/5 text-cyber-amber rounded text-[10px] leading-relaxed space-y-1">
                 <div><strong>DEMO AUTH ACTIVE:</strong> Sign in with:</div>
                 <div><span className="text-slate-300 font-bold">Admin:</span> admin@zampeak.com / admin123</div>
-                <div><span className="text-slate-300 font-bold">Gamer:</span> Recruit a gamer email (e.g. ghost@zampeak.com), and sign in using password <span className="text-slate-300 font-bold">gamer123</span></div>
+                <div><span className="text-slate-300 font-bold">Gamer:</span> Recruit a gamer employee ID (e.g. ZP-101), and sign in using password <span className="text-slate-300 font-bold">gamer123</span></div>
               </div>
             )}
 
-            {/* Email Input */}
+            {/* Email or Employee ID Input */}
             <div className="space-y-1">
-              <label className="text-slate-400 uppercase tracking-wider block">Terminal Email</label>
+              <label className="text-slate-400 uppercase tracking-wider block">
+                {authMode === 'signin' ? 'Employee ID or Admin Email' : 'Operator Registration ID'}
+              </label>
               <input 
-                type="email" 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="operator@zampeak.com"
+                type="text" 
+                value={emailOrEmpId}
+                onChange={(e) => setEmailOrEmpId(e.target.value)}
+                placeholder="e.g. ZP-101 or admin@zampeak.com"
                 required
                 className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2.5 text-slate-200 focus:outline-none focus:border-cyber-cyan"
               />
@@ -130,7 +132,7 @@ export default function Home() {
 
             {/* Password Input */}
             <div className="space-y-1">
-              <label className="text-slate-400 uppercase tracking-wider block">Access Key Code</label>
+              <label className="text-slate-400 uppercase tracking-wider block">Access Key Code (Password)</label>
               <input 
                 type="password" 
                 value={password}
@@ -210,7 +212,9 @@ export default function Home() {
             </div>
             <div className="h-3 w-px bg-cyber-border"></div>
             <div>
-              <span>OPERATOR: <span className="text-slate-200 font-bold select-all">{user.email}</span> ({role.toUpperCase()})</span>
+              <span>OPERATOR: <span className="text-slate-200 font-bold select-all">
+                {role === 'gamer' && gamerProfile ? gamerProfile.name : user.email}
+              </span> ({role.toUpperCase()})</span>
             </div>
             <div className="h-3 w-px bg-cyber-border"></div>
             <div className="flex items-center gap-1.5">
@@ -245,7 +249,7 @@ export default function Home() {
                     activeTab === 'gamers' 
                       ? 'bg-cyber-cyan text-slate-950 shadow-neon-cyan/25' 
                       : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                  }`}
+                }`}
                 >
                   <Users size={12} />
                   Gamers
