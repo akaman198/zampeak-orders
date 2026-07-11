@@ -28,6 +28,7 @@ interface AppContextType {
     status?: 'active' | 'inactive'
   ) => Promise<{ success: boolean; error?: string }>;
   deleteGamer: (id: string) => Promise<{ success: boolean; error?: string }>;
+  resetGamerPassword: (id: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
   addOrder: (
     orderNumber: string,
     gamerId: string,
@@ -343,6 +344,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setGamers(updated);
         localStorage.setItem('zampeak_gamers', JSON.stringify(updated));
       }
+      return { success: true };
+    }
+  };
+
+  const resetGamerPassword = async (id: string, newPassword: string) => {
+    if (!isDemo) {
+      try {
+        const response = await fetch('/api/reset-gamer-password', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ id, newPassword }),
+        });
+
+        const data = await response.json();
+        if (!response.ok || data.error) {
+          throw new Error(data.error || 'Failed to reset password');
+        }
+
+        setGamers((prev) =>
+          prev.map((g) => (g.id === id ? { ...g, default_password: newPassword } : g))
+        );
+        return { success: true };
+      } catch (err: any) {
+        console.error('API error, resetting password:', err);
+        return { success: false, error: err.message };
+      }
+    } else {
+      const updated = gamers.map((g) => (g.id === id ? { ...g, default_password: newPassword } : g));
+      setGamers(updated);
+      localStorage.setItem('zampeak_gamers', JSON.stringify(updated));
       return { success: true };
     }
   };
@@ -663,6 +696,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addGamer,
         updateGamer,
         deleteGamer,
+        resetGamerPassword,
         addOrder,
         updateOrder,
         deleteOrder,

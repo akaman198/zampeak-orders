@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 export default function GamersTab() {
-  const { gamers, orders, addGamer, updateGamer, deleteGamer } = useApp();
+  const { gamers, orders, addGamer, updateGamer, deleteGamer, resetGamerPassword } = useApp();
 
   // Component States
   const [selectedGamer, setSelectedGamer] = useState<Gamer | null>(null);
@@ -107,7 +107,22 @@ export default function GamersTab() {
       }
     }
   };
+  const handleResetPassword = async (gamer: Gamer) => {
+    const newPass = prompt(`Enter a new temporary default password for ${gamer.name} (Employee ID: ${gamer.employee_id}):`, 'gamer123');
+    if (newPass === null) return;
+    if (newPass.trim().length < 6) {
+      alert('Password must be at least 6 characters.');
+      return;
+    }
 
+    const res = await resetGamerPassword(gamer.id, newPass.trim());
+    if (res.success) {
+      alert(`Temporary password successfully reset to: ${newPass.trim()}. Inform the gamer!`);
+      setSelectedGamer({ ...gamer, default_password: newPass.trim() });
+    } else {
+      alert(`Error: ${res.error}`);
+    }
+  };
   const startEdit = (gamer: Gamer) => {
     setIsEditing(gamer);
     setName(gamer.name);
@@ -436,6 +451,13 @@ export default function GamersTab() {
                 </div>
                 
                 <div className="flex gap-2">
+                  <button 
+                    onClick={() => handleResetPassword(selectedGamer)}
+                    className="p-2 border border-cyber-border hover:border-cyber-amber rounded bg-slate-950 hover:bg-cyber-amber/10 text-slate-400 hover:text-cyber-amber transition-all cursor-pointer"
+                    title="Reset Access Password"
+                  >
+                    <Key size={14} />
+                  </button>
                   <button 
                     onClick={() => startEdit(selectedGamer)}
                     className="p-2 border border-cyber-border hover:border-cyber-cyan rounded bg-slate-950 hover:bg-cyber-cyan/10 text-slate-300 hover:text-cyber-cyan transition-all cursor-pointer"
