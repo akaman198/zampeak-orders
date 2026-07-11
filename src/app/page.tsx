@@ -245,7 +245,10 @@ export default function Home() {
               <h1 className="font-mono font-black text-lg tracking-widest text-slate-100 uppercase flex items-center gap-1.5 select-none">
                 ZAMPEAK <span className="text-cyber-cyan text-glow-cyan text-[11px] font-bold tracking-normal bg-cyber-cyan/10 px-1.5 py-0.5 rounded border border-cyber-cyan/20">OS v1.0</span>
               </h1>
-              <p className="text-[9px] font-mono text-slate-500 uppercase tracking-widest mt-0.5">
+              <div className="lg:hidden text-[9px] font-mono text-cyber-cyan font-bold uppercase tracking-wider mt-0.5">
+                OP: {role === 'gamer' && gamerProfile ? gamerProfile.name : user?.email?.split('@')[0]} ({role.toUpperCase()})
+              </div>
+              <p className="hidden lg:block text-[9px] font-mono text-slate-500 uppercase tracking-widest mt-0.5">
                 Delta Force Mobile Order Tracking Command
               </p>
             </div>

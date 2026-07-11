@@ -20,7 +20,7 @@ export default function DashboardTab({
 }: { 
   onNavigate: (tab: 'dashboard' | 'gamers' | 'orders' | 'reports') => void 
 }) {
-  const { orders: allOrders, gamers, updateOrderStatus, role, gamerProfile, isDemo } = useApp();
+  const { orders: allOrders, gamers, updateOrderStatus, role, gamerProfile, isDemo, user } = useApp();
 
   // Filter orders if user is a gamer
   const orders = role === 'gamer' && gamerProfile
@@ -120,6 +120,10 @@ export default function DashboardTab({
           <p className="text-xs text-slate-400 font-mono mt-1">
             TARGET: DELTA FORCE MOBILE — {role === 'admin' ? 'AGENT RECORDS & METRIC AUDITS' : `MY PERFORMANCE PORTFOLIO ID: ${gamerProfile?.employee_id}`}
           </p>
+          <div className="text-[11px] font-mono text-slate-300 mt-2 flex items-center gap-1.5">
+            <span className="text-slate-500 uppercase">OPERATOR:</span>
+            <span className="text-cyber-green font-bold uppercase">{role === 'gamer' && gamerProfile ? gamerProfile.name : (user?.email || 'admin')}</span>
+          </div>
         </div>
         <div className="mt-3 md:mt-0 font-mono text-xs flex gap-3 text-slate-400">
           <span className="px-2 py-1 bg-slate-900 border border-cyber-border rounded">
