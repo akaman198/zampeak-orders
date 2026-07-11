@@ -15,20 +15,28 @@ import {
   Activity,
   LogOut,
   Database,
-  Lock
+  Lock,
+  Key,
+  X
 } from 'lucide-react';
 
 export default function Home() {
-  const { user, role, gamerProfile, loading, authLoading, isDemo, signIn, signUp, signOut } = useApp();
+  const { user, role, gamerProfile, loading, authLoading, isDemo, signIn, signUp, signOut, updatePassword } = useApp();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'gamers' | 'orders' | 'reports'>('dashboard');
 
   // Auth Screen States
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [emailOrEmpId, setEmailOrEmpId] = useState('');
   const [password, setPassword] = useState('');
-  const [defaultPassInput, setDefaultPassInput] = useState('');
   const [authError, setAuthError] = useState('');
   const [authSubmitting, setAuthSubmitting] = useState(false);
+
+  // Change Password Modal States
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
+  const [changePassError, setChangePassError] = useState('');
+  const [changePassSuccess, setChangePassSuccess] = useState('');
 
   // Redirect if gamer tries to access forbidden tabs
   useEffect(() => {
@@ -47,9 +55,10 @@ export default function Home() {
     setAuthSubmitting(true);
 
     try {
+      // NOTE: Gamers do not sign up since they are created by Admin. Gamers sign in directly!
       const res = authMode === 'signin' 
         ? await signIn(emailOrEmpId.trim(), password)
-        : await signUp(emailOrEmpId.trim(), password, defaultPassInput.trim());
+        : await signUp(emailOrEmpId.trim(), password);
 
       if (!res.success) {
         setAuthError(res.error || 'Authentication failed.');
@@ -58,6 +67,34 @@ export default function Home() {
       setAuthError(err.message || 'An error occurred during authentication.');
     } finally {
       setAuthSubmitting(false);
+    }
+  };
+
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPasswordInput.length < 6) {
+      setChangePassError('Key code must be at least 6 characters.');
+      return;
+    }
+    if (newPasswordInput !== confirmPasswordInput) {
+      setChangePassError('Confirm key code does not match.');
+      return;
+    }
+
+    setChangePassError('');
+    setChangePassSuccess('');
+
+    const res = await updatePassword(newPasswordInput);
+    if (res.success) {
+      setChangePassSuccess('Access code updated successfully!');
+      setNewPasswordInput('');
+      setConfirmPasswordInput('');
+      setTimeout(() => {
+        setIsChangePasswordOpen(false);
+        setChangePassSuccess('');
+      }, 1500);
+    } else {
+      setChangePassError(res.error || 'Failed to update credentials.');
     }
   };
 
@@ -79,8 +116,6 @@ export default function Home() {
 
   // Authentication Required Screen (Login)
   if (!user) {
-    const isSignupGamer = authMode === 'signup' && !emailOrEmpId.includes('@') && emailOrEmpId.trim() !== '';
-
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-cyber-bg min-h-screen p-4 relative overflow-hidden font-mono">
         <div className="absolute inset-0 bg-cyber-grid pointer-events-none"></div>
@@ -110,18 +145,24 @@ export default function Home() {
               </div>
             )}
 
+            {authMode === 'signup' && (
+              <div className="p-3 border border-cyber-cyan/30 bg-cyber-cyan/5 text-cyber-cyan rounded text-[10px] leading-relaxed">
+                <strong>NOTICE:</strong> Gamer signups are managed directly by administration. Gamers should sign in using the Employee ID and temporary default password given to them.
+              </div>
+            )}
+
             {isDemo && (
               <div className="p-3 border border-cyber-amber/35 bg-cyber-amber/5 text-cyber-amber rounded text-[10px] leading-relaxed space-y-1">
                 <div><strong>DEMO AUTH ACTIVE:</strong> Sign in with:</div>
                 <div><span className="text-slate-300 font-bold">Admin:</span> admin@zampeak.com / admin123</div>
-                <div><span className="text-slate-300 font-bold">Gamer:</span> Recruit a gamer employee ID (e.g. ZP-101) with default password, and register it!</div>
+                <div><span className="text-slate-300 font-bold">Gamer:</span> Recruit a gamer employee ID (e.g. ZP-101) with default password, and sign in directly!</div>
               </div>
             )}
 
             {/* Email or Employee ID Input */}
             <div className="space-y-1">
               <label className="text-slate-400 uppercase tracking-wider block">
-                {authMode === 'signin' ? 'Employee ID or Admin Email' : 'Operator Registration ID / Employee ID'}
+                {authMode === 'signin' ? 'Employee ID or Admin Email' : 'Operator Registration Email'}
               </label>
               <input 
                 type="text" 
@@ -130,34 +171,15 @@ export default function Home() {
                   setEmailOrEmpId(e.target.value);
                   setAuthError('');
                 }}
-                placeholder="e.g. ZP-101 or admin@zampeak.com"
+                placeholder={authMode === 'signin' ? "e.g. ZP-101 or admin@zampeak.com" : "admin@zampeak.com"}
                 required
                 className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2.5 text-slate-200 focus:outline-none focus:border-cyber-cyan"
               />
             </div>
 
-            {/* Default Registration Password Verification (Admin Generated) */}
-            {isSignupGamer && (
-              <div className="space-y-1">
-                <label className="text-cyber-amber uppercase tracking-wider block font-bold">
-                  Default Registration Password (Assigned by Admin)
-                </label>
-                <input 
-                  type="password" 
-                  value={defaultPassInput}
-                  onChange={(e) => setDefaultPassInput(e.target.value)}
-                  placeholder="Ask Admin for your temporary code"
-                  required
-                  className="w-full bg-slate-950 border border-cyber-amber/40 rounded px-3 py-2.5 text-slate-200 focus:outline-none focus:border-cyber-amber"
-                />
-              </div>
-            )}
-
             {/* Password Input */}
             <div className="space-y-1">
-              <label className="text-slate-400 uppercase tracking-wider block">
-                {authMode === 'signin' ? 'Access Key Code (Password)' : 'Create New Access Key Code (Password)'}
-              </label>
+              <label className="text-slate-400 uppercase tracking-wider block">Access Key Code (Password)</label>
               <input 
                 type="password" 
                 value={password}
@@ -174,7 +196,7 @@ export default function Home() {
               disabled={authSubmitting}
               className="w-full py-2.5 bg-cyber-cyan hover:bg-cyan-400 text-slate-950 font-bold rounded shadow-neon-cyan/20 transition-all font-mono tracking-widest cursor-pointer uppercase mt-2 text-center flex items-center justify-center gap-1.5"
             >
-              {authSubmitting ? 'Authenticating...' : authMode === 'signin' ? 'Sign In Operations' : 'Register Operator'}
+              {authSubmitting ? 'Authenticating...' : authMode === 'signin' ? 'Sign In Operations' : 'Register Admin Operator'}
             </button>
           </form>
 
@@ -182,19 +204,19 @@ export default function Home() {
           <div className="mt-5 text-center text-[10px] text-slate-500 border-t border-cyber-border/20 pt-4">
             {authMode === 'signin' ? (
               <span>
-                First deployment?{' '}
+                Need Admin Account?{' '}
                 <button 
-                  onClick={() => { setAuthMode('signup'); setAuthError(''); setDefaultPassInput(''); }}
+                  onClick={() => { setAuthMode('signup'); setAuthError(''); }}
                   className="text-cyber-cyan hover:underline font-bold cursor-pointer uppercase"
                 >
-                  Register Callsign
+                  Register Admin
                 </button>
               </span>
             ) : (
               <span>
                 Already registered?{' '}
                 <button 
-                  onClick={() => { setAuthMode('signin'); setAuthError(''); setDefaultPassInput(''); }}
+                  onClick={() => { setAuthMode('signin'); setAuthError(''); }}
                   className="text-cyber-cyan hover:underline font-bold cursor-pointer uppercase"
                 >
                   Sign In Operator
@@ -308,6 +330,15 @@ export default function Home() {
               )}
             </nav>
 
+            {/* Change Password Lock Button */}
+            <button 
+              onClick={() => setIsChangePasswordOpen(true)}
+              title="Change Password Access Key"
+              className="p-2 border border-cyber-border hover:border-cyber-cyan rounded bg-slate-950 hover:bg-cyber-cyan/10 text-slate-400 hover:text-cyber-cyan transition-all cursor-pointer"
+            >
+              <Key size={14} />
+            </button>
+
             {/* Log Out Button */}
             <button 
               onClick={signOut}
@@ -327,6 +358,76 @@ export default function Home() {
         {activeTab === 'orders' && <OrdersTab />}
         {activeTab === 'reports' && <ReportsTab />}
       </main>
+
+      {/* Password Reset Modal */}
+      {isChangePasswordOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="tactical-panel p-6 rounded clip-corners border border-cyber-cyan/40 w-full max-w-sm relative font-mono text-xs">
+            <div className="hud-grid"></div>
+            
+            <h3 className="font-bold text-sm text-cyber-cyan uppercase tracking-widest border-b border-cyber-cyan/20 pb-3 mb-5 flex justify-between items-center">
+              <span>Update Access Key Code</span>
+              <button 
+                onClick={() => { 
+                  setIsChangePasswordOpen(false); 
+                  setChangePassError(''); 
+                  setChangePassSuccess(''); 
+                  setNewPasswordInput('');
+                  setConfirmPasswordInput('');
+                }} 
+                className="text-slate-400 hover:text-slate-200 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </h3>
+
+            <form onSubmit={handleChangePasswordSubmit} className="space-y-4">
+              {changePassError && (
+                <div className="p-3 border border-cyber-red/30 bg-cyber-red/10 text-cyber-red rounded font-bold text-center">
+                  [FAILED]: {changePassError}
+                </div>
+              )}
+              
+              {changePassSuccess && (
+                <div className="p-3 border border-cyber-green/30 bg-cyber-green/10 text-cyber-green rounded font-bold text-center">
+                  [SUCCESS]: {changePassSuccess}
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="text-slate-400 uppercase tracking-wider block">New Access Key Code (Min 6 chars)</label>
+                <input 
+                  type="password" 
+                  value={newPasswordInput}
+                  onChange={(e) => setNewPasswordInput(e.target.value)}
+                  placeholder="••••••••••••"
+                  required
+                  className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-slate-400 uppercase tracking-wider block">Confirm Access Key Code</label>
+                <input 
+                  type="password" 
+                  value={confirmPasswordInput}
+                  onChange={(e) => setConfirmPasswordInput(e.target.value)}
+                  placeholder="••••••••••••"
+                  required
+                  className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan"
+                />
+              </div>
+
+              <button 
+                type="submit"
+                className="w-full py-2.5 bg-cyber-cyan hover:bg-cyan-400 text-slate-950 font-bold rounded shadow-neon-cyan/20 transition-all uppercase tracking-widest cursor-pointer mt-2 text-center"
+              >
+                Confirm Change
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Footer Ticker */}
       <footer className="bg-cyber-dark/45 border-t border-cyber-border/40 py-2.5 px-4 font-mono text-[9px] text-slate-500 text-center tracking-widest uppercase select-none print:hidden mt-auto">

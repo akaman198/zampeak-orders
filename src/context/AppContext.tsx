@@ -17,6 +17,7 @@ interface AppContextType {
   signIn: (emailOrEmpId: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signUp: (emailOrEmpId: string, password: string, defaultPassword?: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
+  updatePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
   addGamer: (name: string, employeeId: string, defaultPassword: string, phone?: string) => Promise<{ success: boolean; error?: string }>;
   updateGamer: (
     id: string,
@@ -320,33 +321,65 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  // Gamers operations
-  const addGamer = async (name: string, employeeId: string, defaultPassword: string, phone?: string) => {
-    const cleanEmpId = employeeId.trim().toUpperCase();
-    const syntheticEmail = `${cleanEmpId.toLowerCase()}@gamers.zampeak.com`;
-
-    const newGamer: Gamer = {
-      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11),
-      name,
-      employee_id: cleanEmpId,
-      email: syntheticEmail,
-      default_password: defaultPassword,
-      phone: phone || '',
-      status: 'active',
-      created_at: new Date().toISOString(),
-    };
-
+  const updatePassword = async (newPassword: string) => {
     if (!isDemo && supabase) {
       try {
-        const { error } = await supabase.from('gamers').insert([newGamer]);
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
         if (error) throw error;
-        setGamers((prev) => [newGamer, ...prev]);
+        
+        if (role === 'gamer' && gamerProfile) {
+          await supabase.from('gamers').update({ default_password: null }).eq('id', gamerProfile.id);
+        }
         return { success: true };
       } catch (err: any) {
-        console.error('Supabase error, adding gamer:', err);
         return { success: false, error: err.message };
       }
     } else {
+      if (role === 'gamer' && gamerProfile) {
+        const updated = gamers.map(g => g.id === gamerProfile.id ? { ...g, default_password: '' } : g);
+        setGamers(updated);
+        localStorage.setItem('zampeak_gamers', JSON.stringify(updated));
+      }
+      return { success: true };
+    }
+  };
+
+  // Gamers operations
+  const addGamer = async (name: string, employeeId: string, defaultPassword: string, phone?: string) => {
+    if (!isDemo) {
+      try {
+        const response = await fetch('/api/create-gamer', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ name, employeeId, defaultPassword, phone }),
+        });
+
+        const data = await response.json();
+        if (!response.ok || data.error) {
+          throw new Error(data.error || 'Failed to create gamer');
+        }
+
+        setGamers((prev) => [data.gamer, ...prev]);
+        return { success: true };
+      } catch (err: any) {
+        console.error('API error, adding gamer:', err);
+        return { success: false, error: err.message };
+      }
+    } else {
+      const cleanEmpId = employeeId.trim().toUpperCase();
+      const syntheticEmail = `${cleanEmpId.toLowerCase()}@gamers.zampeak.com`;
+      const newGamer: Gamer = {
+        id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11),
+        name,
+        employee_id: cleanEmpId,
+        email: syntheticEmail,
+        default_password: defaultPassword,
+        phone: phone || '',
+        status: 'active',
+        created_at: new Date().toISOString(),
+      };
       const updated = [newGamer, ...gamers];
       setGamers(updated);
       localStorage.setItem('zampeak_gamers', JSON.stringify(updated));
@@ -413,14 +446,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return { success: false, error: 'Cannot delete gamer who has assigned orders. Deactivate them instead.' };
     }
 
-    if (!isDemo && supabase) {
+    if (!isDemo) {
       try {
-        const { error } = await supabase.from('gamers').delete().eq('id', id);
-        if (error) throw error;
+        const response = await fetch('/api/delete-gamer', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ id }),
+        });
+
+        const data = await response.json();
+        if (!response.ok || data.error) {
+          throw new Error(data.error || 'Failed to delete gamer');
+        }
+
         setGamers((prev) => prev.filter((g) => g.id !== id));
         return { success: true };
       } catch (err: any) {
-        console.error('Supabase error, deleting gamer:', err);
+        console.error('API error, deleting gamer:', err);
         return { success: false, error: err.message };
       }
     } else {
@@ -612,6 +656,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         signIn,
         signUp,
         signOut,
+        updatePassword,
         addGamer,
         updateGamer,
         deleteGamer,
