@@ -159,7 +159,33 @@ ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow authenticated read access" ON public.gamers FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Allow authenticated write access" ON public.gamers FOR ALL TO authenticated USING (true);
 CREATE POLICY "Allow authenticated read access" ON public.orders FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Allow authenticated write access" ON public.orders FOR ALL TO authenticated USING (true);`;
+CREATE POLICY "Allow authenticated write access" ON public.orders FOR ALL TO authenticated USING (true);
+
+-- 6. RPC Secure Registration Validator (Bypasses RLS to verify codes safely)
+CREATE OR REPLACE FUNCTION verify_gamer_registration(p_employee_id TEXT, p_default_password TEXT)
+RETURNS JSON
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_gamer RECORD;
+BEGIN
+    SELECT * FROM public.gamers WHERE UPPER(employee_id) = UPPER(p_employee_id) INTO v_gamer;
+    
+    IF v_gamer.id IS NULL THEN
+        RETURN json_build_object('success', false, 'error', 'Employee ID is not registered in the system. Contact Admin.');
+    END IF;
+    
+    IF v_gamer.default_password IS NULL OR v_gamer.default_password = '' THEN
+        RETURN json_build_object('success', false, 'error', 'Employee ID is already registered. Please Sign In.');
+    END IF;
+    
+    IF v_gamer.default_password <> p_default_password THEN
+        RETURN json_build_object('success', false, 'error', 'Invalid default registration password.');
+    END IF;
+    
+    RETURN json_build_object('success', true);
+END;
+$$ LANGUAGE plpgsql;`;
 
   const envTemplate = `NEXT_PUBLIC_SUPABASE_URL=your-supabase-project-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;

@@ -237,39 +237,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (isGamer) {
       const empId = emailOrEmpId.trim().toUpperCase();
-      let matchedGamer: Gamer | undefined = undefined;
 
       if (!isDemo && supabase) {
         try {
-          const { data, error } = await supabase
-            .from('gamers')
-            .select('*')
-            .eq('employee_id', empId);
+          const { data, error } = await supabase.rpc('verify_gamer_registration', {
+            p_employee_id: empId,
+            p_default_password: defaultPassword || ''
+          });
           
           if (error) throw error;
-          matchedGamer = data && data.length > 0 ? data[0] : undefined;
+          
+          const verification = data as { success: boolean; error?: string };
+          if (!verification.success) {
+            return { success: false, error: verification.error };
+          }
         } catch (err: any) {
           return { success: false, error: `Database validation error: ${err.message}` };
         }
       } else {
         const savedGamers = localStorage.getItem('zampeak_gamers');
+        let matchedGamer: Gamer | undefined = undefined;
         if (savedGamers) {
           const localGamers: Gamer[] = JSON.parse(savedGamers);
           matchedGamer = localGamers.find(g => g.employee_id.toUpperCase() === empId);
         }
-      }
 
-      // Gamer validation rules
-      if (!matchedGamer) {
-        return { success: false, error: `Employee ID "${empId}" is not registered in the system. Contact Admin.` };
-      }
+        // Gamer validation rules locally
+        if (!matchedGamer) {
+          return { success: false, error: `Employee ID "${empId}" is not registered in the system. Contact Admin.` };
+        }
 
-      if (!matchedGamer.default_password) {
-        return { success: false, error: `Employee ID "${empId}" is already registered. Please Sign In.` };
-      }
+        if (!matchedGamer.default_password) {
+          return { success: false, error: `Employee ID "${empId}" is already registered. Please Sign In.` };
+        }
 
-      if (matchedGamer.default_password !== defaultPassword) {
-        return { success: false, error: 'Invalid default password code provided by Admin.' };
+        if (matchedGamer.default_password !== defaultPassword) {
+          return { success: false, error: 'Invalid default password code provided by Admin.' };
+        }
       }
     }
 
