@@ -26,6 +26,7 @@ export default function Home() {
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [emailOrEmpId, setEmailOrEmpId] = useState('');
   const [password, setPassword] = useState('');
+  const [defaultPassInput, setDefaultPassInput] = useState('');
   const [authError, setAuthError] = useState('');
   const [authSubmitting, setAuthSubmitting] = useState(false);
 
@@ -48,7 +49,7 @@ export default function Home() {
     try {
       const res = authMode === 'signin' 
         ? await signIn(emailOrEmpId.trim(), password)
-        : await signUp(emailOrEmpId.trim(), password);
+        : await signUp(emailOrEmpId.trim(), password, defaultPassInput.trim());
 
       if (!res.success) {
         setAuthError(res.error || 'Authentication failed.');
@@ -78,6 +79,8 @@ export default function Home() {
 
   // Authentication Required Screen (Login)
   if (!user) {
+    const isSignupGamer = authMode === 'signup' && !emailOrEmpId.includes('@') && emailOrEmpId.trim() !== '';
+
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-cyber-bg min-h-screen p-4 relative overflow-hidden font-mono">
         <div className="absolute inset-0 bg-cyber-grid pointer-events-none"></div>
@@ -111,28 +114,50 @@ export default function Home() {
               <div className="p-3 border border-cyber-amber/35 bg-cyber-amber/5 text-cyber-amber rounded text-[10px] leading-relaxed space-y-1">
                 <div><strong>DEMO AUTH ACTIVE:</strong> Sign in with:</div>
                 <div><span className="text-slate-300 font-bold">Admin:</span> admin@zampeak.com / admin123</div>
-                <div><span className="text-slate-300 font-bold">Gamer:</span> Recruit a gamer employee ID (e.g. ZP-101), and sign in using password <span className="text-slate-300 font-bold">gamer123</span></div>
+                <div><span className="text-slate-300 font-bold">Gamer:</span> Recruit a gamer employee ID (e.g. ZP-101) with default password, and register it!</div>
               </div>
             )}
 
             {/* Email or Employee ID Input */}
             <div className="space-y-1">
               <label className="text-slate-400 uppercase tracking-wider block">
-                {authMode === 'signin' ? 'Employee ID or Admin Email' : 'Operator Registration ID'}
+                {authMode === 'signin' ? 'Employee ID or Admin Email' : 'Operator Registration ID / Employee ID'}
               </label>
               <input 
                 type="text" 
                 value={emailOrEmpId}
-                onChange={(e) => setEmailOrEmpId(e.target.value)}
+                onChange={(e) => {
+                  setEmailOrEmpId(e.target.value);
+                  setAuthError('');
+                }}
                 placeholder="e.g. ZP-101 or admin@zampeak.com"
                 required
                 className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2.5 text-slate-200 focus:outline-none focus:border-cyber-cyan"
               />
             </div>
 
+            {/* Default Registration Password Verification (Admin Generated) */}
+            {isSignupGamer && (
+              <div className="space-y-1">
+                <label className="text-cyber-amber uppercase tracking-wider block font-bold">
+                  Default Registration Password (Assigned by Admin)
+                </label>
+                <input 
+                  type="password" 
+                  value={defaultPassInput}
+                  onChange={(e) => setDefaultPassInput(e.target.value)}
+                  placeholder="Ask Admin for your temporary code"
+                  required
+                  className="w-full bg-slate-950 border border-cyber-amber/40 rounded px-3 py-2.5 text-slate-200 focus:outline-none focus:border-cyber-amber"
+                />
+              </div>
+            )}
+
             {/* Password Input */}
             <div className="space-y-1">
-              <label className="text-slate-400 uppercase tracking-wider block">Access Key Code (Password)</label>
+              <label className="text-slate-400 uppercase tracking-wider block">
+                {authMode === 'signin' ? 'Access Key Code (Password)' : 'Create New Access Key Code (Password)'}
+              </label>
               <input 
                 type="password" 
                 value={password}
@@ -159,7 +184,7 @@ export default function Home() {
               <span>
                 First deployment?{' '}
                 <button 
-                  onClick={() => { setAuthMode('signup'); setAuthError(''); }}
+                  onClick={() => { setAuthMode('signup'); setAuthError(''); setDefaultPassInput(''); }}
                   className="text-cyber-cyan hover:underline font-bold cursor-pointer uppercase"
                 >
                   Register Callsign
@@ -169,7 +194,7 @@ export default function Home() {
               <span>
                 Already registered?{' '}
                 <button 
-                  onClick={() => { setAuthMode('signin'); setAuthError(''); }}
+                  onClick={() => { setAuthMode('signin'); setAuthError(''); setDefaultPassInput(''); }}
                   className="text-cyber-cyan hover:underline font-bold cursor-pointer uppercase"
                 >
                   Sign In Operator
@@ -249,7 +274,7 @@ export default function Home() {
                     activeTab === 'gamers' 
                       ? 'bg-cyber-cyan text-slate-950 shadow-neon-cyan/25' 
                       : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                }`}
+                  }`}
                 >
                   <Users size={12} />
                   Gamers

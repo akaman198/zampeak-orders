@@ -6,6 +6,7 @@ export interface Gamer {
   name: string;
   employee_id: string;
   email?: string;
+  default_password?: string;
   phone?: string;
   status: 'active' | 'inactive';
   created_at: string;

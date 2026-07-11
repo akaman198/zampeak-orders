@@ -132,6 +132,7 @@ CREATE TABLE public.gamers (
     name TEXT NOT NULL,
     employee_id TEXT UNIQUE NOT NULL,
     email TEXT UNIQUE,
+    default_password TEXT,
     phone TEXT,
     status TEXT NOT NULL DEFAULT 'active',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL

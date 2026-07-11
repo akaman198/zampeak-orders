@@ -15,13 +15,14 @@ interface AppContextType {
   authLoading: boolean;
   isDemo: boolean;
   signIn: (emailOrEmpId: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  signUp: (emailOrEmpId: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signUp: (emailOrEmpId: string, password: string, defaultPassword?: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
-  addGamer: (name: string, employeeId: string, phone?: string) => Promise<{ success: boolean; error?: string }>;
+  addGamer: (name: string, employeeId: string, defaultPassword: string, phone?: string) => Promise<{ success: boolean; error?: string }>;
   updateGamer: (
     id: string,
     name: string,
     employeeId: string,
+    defaultPassword?: string,
     phone?: string,
     status?: 'active' | 'inactive'
   ) => Promise<{ success: boolean; error?: string }>;
@@ -53,13 +54,12 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Helper to convert Employee ID to Synthetic Email
 const getEmailFromInput = (input: string): string => {
   const trimmed = input.trim();
   if (trimmed.includes('@')) {
-    return trimmed; // It's an admin email
+    return trimmed;
   }
-  return `${trimmed.toLowerCase()}@zampeak.local`; // Synthetic gamer email
+  return `${trimmed.toLowerCase()}@zampeak.local`;
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -115,7 +115,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Only load operational data when user logs in successfully
   useEffect(() => {
     if (user) {
       loadData();
@@ -127,7 +126,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
-  // Determine user role and matched gamer profile after data load
   useEffect(() => {
     if (user) {
       const emailLower = user.email?.toLowerCase() || '';
@@ -211,48 +209,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { success: false, error: err.message };
       }
     } else {
-      // Local Demo Auth
       if (loginEmail === 'admin@zampeak.com' && password === 'admin123') {
         const mockUser = { id: 'demo-user-id', email: loginEmail } as User;
         setUser(mockUser);
         sessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
         return { success: true };
       } else {
-        // Find match in local storage gamers
         const savedGamers = localStorage.getItem('zampeak_gamers');
         if (savedGamers) {
           const localGamers: Gamer[] = JSON.parse(savedGamers);
           const matched = localGamers.find(g => g.email?.toLowerCase() === loginEmail.toLowerCase());
-          if (matched && password === 'gamer123') {
+          if (matched && password === (matched.default_password || 'gamer123')) {
             const mockUser = { id: matched.id, email: loginEmail } as User;
             setUser(mockUser);
             sessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
             return { success: true };
           }
         }
-        return { success: false, error: 'Invalid credentials. Demo admin defaults: admin@zampeak.com / admin123. Or gamer employee ID with password gamer123' };
+        return { success: false, error: 'Invalid credentials. Demo admin defaults: admin@zampeak.com / admin123. Or gamer employee ID with password.' };
       }
     }
   };
 
-  const signUp = async (emailOrEmpId: string, password: string) => {
+  const signUp = async (emailOrEmpId: string, password: string, defaultPassword?: string) => {
     const signupEmail = getEmailFromInput(emailOrEmpId);
     const isGamer = signupEmail.endsWith('@zampeak.local');
 
-    // Secure Gate: If signing up as a gamer, Employee ID must be registered beforehand by Admin
     if (isGamer) {
       const empId = emailOrEmpId.trim().toUpperCase();
-      let matchedGamerExists = false;
+      let matchedGamer: Gamer | undefined = undefined;
 
       if (!isDemo && supabase) {
         try {
           const { data, error } = await supabase
             .from('gamers')
-            .select('id')
+            .select('*')
             .eq('employee_id', empId);
           
           if (error) throw error;
-          matchedGamerExists = data && data.length > 0;
+          matchedGamer = data && data.length > 0 ? data[0] : undefined;
         } catch (err: any) {
           return { success: false, error: `Database validation error: ${err.message}` };
         }
@@ -260,12 +255,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const savedGamers = localStorage.getItem('zampeak_gamers');
         if (savedGamers) {
           const localGamers: Gamer[] = JSON.parse(savedGamers);
-          matchedGamerExists = localGamers.some(g => g.employee_id.toUpperCase() === empId);
+          matchedGamer = localGamers.find(g => g.employee_id.toUpperCase() === empId);
         }
       }
 
-      if (!matchedGamerExists) {
+      // Gamer validation rules
+      if (!matchedGamer) {
         return { success: false, error: `Employee ID "${empId}" is not registered in the system. Contact Admin.` };
+      }
+
+      if (!matchedGamer.default_password) {
+        return { success: false, error: `Employee ID "${empId}" is already registered. Please Sign In.` };
+      }
+
+      if (matchedGamer.default_password !== defaultPassword) {
+        return { success: false, error: 'Invalid default password code provided by Admin.' };
       }
     }
 
@@ -275,6 +279,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (error) throw error;
         if (data.user) {
           setUser(data.user);
+          // Securely clear default password in gamers table after successful signup!
+          const empId = emailOrEmpId.trim().toUpperCase();
+          await supabase.from('gamers').update({ default_password: null }).eq('employee_id', empId);
         }
         return { success: true };
       } catch (err: any) {
@@ -285,6 +292,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const mockUser = { id: Math.random().toString(), email: signupEmail } as User;
       setUser(mockUser);
       sessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
+
+      // Clear local default password
+      const empId = emailOrEmpId.trim().toUpperCase();
+      const updatedGamers = gamers.map(g => g.employee_id === empId ? { ...g, default_password: '' } : g);
+      setGamers(updatedGamers);
+      localStorage.setItem('zampeak_gamers', JSON.stringify(updatedGamers));
+
       return { success: true };
     }
   };
@@ -303,7 +317,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   // Gamers operations
-  const addGamer = async (name: string, employeeId: string, phone?: string) => {
+  const addGamer = async (name: string, employeeId: string, defaultPassword: string, phone?: string) => {
     const cleanEmpId = employeeId.trim().toUpperCase();
     const syntheticEmail = `${cleanEmpId.toLowerCase()}@zampeak.local`;
 
@@ -312,6 +326,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       name,
       employee_id: cleanEmpId,
       email: syntheticEmail,
+      default_password: defaultPassword,
       phone: phone || '',
       status: 'active',
       created_at: new Date().toISOString(),
@@ -339,6 +354,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     id: string,
     name: string,
     employeeId: string,
+    defaultPassword?: string,
     phone?: string,
     status?: 'active' | 'inactive'
   ) => {
@@ -353,6 +369,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           email: syntheticEmail,
           phone: phone || '' 
         };
+        if (defaultPassword) updates.default_password = defaultPassword;
         if (status) updates.status = status;
 
         const { error } = await supabase.from('gamers').update(updates).eq('id', id);
@@ -374,6 +391,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               name, 
               employee_id: cleanEmpId, 
               email: syntheticEmail,
+              default_password: defaultPassword || g.default_password,
               phone: phone || '', 
               status: status || g.status 
             }
