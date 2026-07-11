@@ -33,6 +33,7 @@ export default function OrdersTab() {
   const [payout, setPayout] = useState<number>(50);
   const [isPayoutOverridden, setIsPayoutOverridden] = useState(false);
   const [formError, setFormError] = useState('');
+  const [gamerSearchQuery, setGamerSearchQuery] = useState('');
 
   // Filters State
   const [searchTerm, setSearchTerm] = useState('');
@@ -45,6 +46,12 @@ export default function OrdersTab() {
   const orders = role === 'gamer' && gamerProfile
     ? allOrders.filter(o => o.gamer_id === gamerProfile.id)
     : allOrders;
+
+  // Filter gamers list in Select dropdown
+  const filteredGamersForSelect = gamers.filter(g => 
+    g.name.toLowerCase().includes(gamerSearchQuery.toLowerCase()) ||
+    g.employee_id.toLowerCase().includes(gamerSearchQuery.toLowerCase())
+  );
 
   // Trigger payout auto-update when sizeMillions changes (unless overridden)
   useEffect(() => {
@@ -69,6 +76,7 @@ export default function OrdersTab() {
     setPayout(50);
     setIsPayoutOverridden(false);
     setFormError('');
+    setGamerSearchQuery('');
     setIsEditing(null);
     setIsFormOpen(true);
   };
@@ -85,6 +93,7 @@ export default function OrdersTab() {
     setPayout(order.payout);
     setIsPayoutOverridden(order.payout !== order.size_millions);
     setFormError('');
+    setGamerSearchQuery('');
     setIsFormOpen(true);
   };
 
@@ -301,16 +310,23 @@ export default function OrdersTab() {
                   />
                 </div>
 
-                {/* Gamer Select */}
+                {/* Gamer Select with search filter */}
                 <div className="space-y-1">
-                  <label className="text-slate-400 uppercase tracking-wider">Assign Gamer Dossier</label>
+                  <label className="text-slate-400 uppercase tracking-wider block">Assign Gamer Dossier</label>
+                  <input 
+                    type="text"
+                    value={gamerSearchQuery}
+                    onChange={(e) => setGamerSearchQuery(e.target.value)}
+                    placeholder="Filter by name or ID..."
+                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyber-cyan text-[11px] mb-1.5"
+                  />
                   <select 
                     value={gamerId} 
                     onChange={(e) => setGamerId(e.target.value)}
                     className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer"
                   >
                     <option value="" disabled>Select active gamer...</option>
-                    {gamers.map(g => (
+                    {filteredGamersForSelect.map(g => (
                       <option key={g.id} value={g.id}>{g.name} (ID: {g.employee_id})</option>
                     ))}
                   </select>
