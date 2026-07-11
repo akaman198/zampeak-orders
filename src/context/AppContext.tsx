@@ -1,14 +1,20 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Gamer, Order, OrderStatus, AssetType, GamerPerformance, DashboardStats } from '../types';
+import { Gamer, Order, OrderStatus, AssetType } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { User } from '@supabase/supabase-js';
 
 interface AppContextType {
+  user: User | null;
   gamers: Gamer[];
   orders: Order[];
   loading: boolean;
+  authLoading: boolean;
   isDemo: boolean;
+  signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signUp: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signOut: () => Promise<void>;
   addGamer: (name: string, employeeId: string, phone?: string) => Promise<{ success: boolean; error?: string }>;
   updateGamer: (
     id: string,
@@ -46,14 +52,69 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
   const [gamers, setGamers] = useState<Gamer[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
   const [isDemo, setIsDemo] = useState(!isSupabaseConfigured);
+
+  // Initialize and check auth session
+  useEffect(() => {
+    const initializeAuth = async () => {
+      setAuthLoading(true);
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          setUser(session?.user ?? null);
+
+          const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setUser(session?.user ?? null);
+          });
+
+          setAuthLoading(false);
+          return () => subscription.unsubscribe();
+        } catch (err) {
+          console.error('Supabase Auth error, falling back to local auth:', err);
+          setIsDemo(true);
+          checkLocalSession();
+        }
+      } else {
+        setIsDemo(true);
+        checkLocalSession();
+      }
+      setAuthLoading(false);
+    };
+
+    initializeAuth();
+  }, []);
+
+  const checkLocalSession = () => {
+    const sessionUser = sessionStorage.getItem('zampeak_user');
+    if (sessionUser) {
+      try {
+        setUser(JSON.parse(sessionUser));
+      } catch {
+        setUser(null);
+      }
+    } else {
+      setUser(null);
+    }
+  };
+
+  // Only load operational data when user logs in successfully
+  useEffect(() => {
+    if (user) {
+      loadData();
+    } else {
+      setGamers([]);
+      setOrders([]);
+    }
+  }, [user]);
 
   const loadData = async () => {
     setLoading(true);
-    if (isSupabaseConfigured && supabase) {
+    if (!isDemo && isSupabaseConfigured && supabase) {
       try {
         const { data: gamersData, error: gamersErr } = await supabase
           .from('gamers')
@@ -65,20 +126,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
           .select('*')
           .order('created_at', { ascending: false });
 
+        // Graceful error handling instead of throwing exceptions
         if (gamersErr || ordersErr) {
-          throw new Error(gamersErr?.message || ordersErr?.message);
+          console.error('Database read error:', gamersErr?.message || ordersErr?.message);
+          setIsDemo(true);
+          loadLocalStorage();
+        } else {
+          setGamers(gamersData || []);
+          setOrders(ordersData || []);
         }
-
-        setGamers(gamersData || []);
-        setOrders(ordersData || []);
-        setIsDemo(false);
       } catch (err) {
         console.error('Failed to load from Supabase, falling back to local storage:', err);
         setIsDemo(true);
         loadLocalStorage();
       }
     } else {
-      setIsDemo(true);
       loadLocalStorage();
     }
     setLoading(false);
@@ -92,7 +154,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setGamers(JSON.parse(savedGamers));
       setOrders(JSON.parse(savedOrders));
     } else {
-      // Production ready: Start completely empty
       setGamers([]);
       setOrders([]);
       localStorage.setItem('zampeak_gamers', JSON.stringify([]));
@@ -100,14 +161,74 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
   const refreshData = async () => {
-    await loadData();
+    if (user) {
+      await loadData();
+    }
   };
 
+  // Auth Operations
+  const signIn = async (email: string, password: string) => {
+    if (!isDemo && supabase) {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        setUser(data.user);
+        return { success: true };
+      } catch (err: any) {
+        console.error('Login error:', err);
+        return { success: false, error: err.message };
+      }
+    } else {
+      // Local Demo Auth
+      if (email === 'admin@zampeak.com' && password === 'admin123') {
+        const mockUser = { id: 'demo-user-id', email } as User;
+        setUser(mockUser);
+        sessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
+        return { success: true };
+      } else {
+        return { success: false, error: 'Invalid credentials. Demo mode defaults: admin@zampeak.com / admin123' };
+      }
+    }
+  };
+
+  const signUp = async (email: string, password: string) => {
+    if (!isDemo && supabase) {
+      try {
+        const { data, error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        // Supabase returns user but they might need email confirmation depending on setup
+        if (data.user) {
+          setUser(data.user);
+        }
+        return { success: true };
+      } catch (err: any) {
+        console.error('Registration error:', err);
+        return { success: false, error: err.message };
+      }
+    } else {
+      // Demo register new
+      const mockUser = { id: Math.random().toString(), email } as User;
+      setUser(mockUser);
+      sessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
+      return { success: true };
+    }
+  };
+
+  const signOut = async () => {
+    if (!isDemo && supabase) {
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.error('Logout error:', err);
+      }
+    } else {
+      sessionStorage.removeItem('zampeak_user');
+    }
+    setUser(null);
+  };
+
+  // Gamers operations
   const addGamer = async (name: string, employeeId: string, phone?: string) => {
     const newGamer: Gamer = {
       id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11),
@@ -195,6 +316,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Orders operations
   const addOrder = async (
     orderNumber: string,
     gamerId: string,
@@ -364,10 +486,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider
       value={{
+        user,
         gamers,
         orders,
         loading,
+        authLoading,
         isDemo,
+        signIn,
+        signUp,
+        signOut,
         addGamer,
         updateGamer,
         deleteGamer,
