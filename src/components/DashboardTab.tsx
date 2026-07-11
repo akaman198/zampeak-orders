@@ -106,7 +106,10 @@ export default function DashboardTab({
   };
 
   const availableCycles = getAvailablePayCycles();
-  const [selectedCycle, setSelectedCycle] = useState(availableCycles[0] || '');
+  const currentMonthCycle = getPayPeriodLabel(new Date().toISOString());
+  const [selectedCycle, setSelectedCycle] = useState(
+    availableCycles.includes(currentMonthCycle) ? currentMonthCycle : (availableCycles[0] || '')
+  );
 
   const getOrdersInCycle = (cycleLabel: string) => {
     const completedOrders = orders.filter(o => o.status === 'Completed');
