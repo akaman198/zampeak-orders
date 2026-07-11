@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { 
   Shield, 
@@ -26,6 +26,92 @@ export default function DashboardTab({
   const orders = role === 'gamer' && gamerProfile
     ? allOrders.filter(o => o.gamer_id === gamerProfile.id)
     : allOrders;
+
+  // Helper to calculate pay period label from a date string
+  const getPayPeriodLabel = (dateStr: string) => {
+    const date = new Date(dateStr);
+    let year = date.getFullYear();
+    let month = date.getMonth(); // 0-indexed
+    const day = date.getDate();
+
+    if (day >= 15) {
+      month += 1;
+      if (month > 11) {
+        month = 0;
+        year += 1;
+      }
+    }
+
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return `${monthNames[month]} 15, ${year}`;
+  };
+
+  // Generate list of cycles
+  const getAvailablePayCycles = () => {
+    const cyclesSet = new Set<string>();
+    
+    // Always include current month and next month's cycles as upcoming options
+    const now = new Date();
+    cyclesSet.add(getPayPeriodLabel(now.toISOString()));
+    
+    // Add next month cycle
+    const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 15);
+    cyclesSet.add(getPayPeriodLabel(nextMonthDate.toISOString()));
+
+    // Add cycles from completed orders
+    allOrders.forEach(o => {
+      if (o.status === 'Completed') {
+        cyclesSet.add(getPayPeriodLabel(o.start_date));
+      }
+    });
+
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return Array.from(cyclesSet).sort((a, b) => {
+      const parseDate = (label: string) => {
+        const parts = label.replace(',', '').split(' '); // e.g. ["July", "15", "2026"]
+        const m = monthNames.indexOf(parts[0]);
+        const d = parseInt(parts[1]);
+        const y = parseInt(parts[2]);
+        return new Date(y, m, d).getTime();
+      };
+      return parseDate(b) - parseDate(a); // descending order
+    });
+  };
+
+  const getCycleRangeLabel = (cycleLabel: string) => {
+    if (!cycleLabel) return '';
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const parts = cycleLabel.replace(',', '').split(' '); // e.g. ["July", "15", "2026"]
+    const monthIndex = monthNames.indexOf(parts[0]);
+    const year = parseInt(parts[2]);
+
+    // Prev month index
+    let prevMonthIndex = monthIndex - 1;
+    let prevYear = year;
+    if (prevMonthIndex < 0) {
+      prevMonthIndex = 11;
+      prevYear -= 1;
+    }
+
+    return `Cycle period: ${monthNames[prevMonthIndex]} 15, ${prevYear} to ${parts[0]} 14, ${year}`;
+  };
+
+  const availableCycles = getAvailablePayCycles();
+  const [selectedCycle, setSelectedCycle] = useState(availableCycles[0] || '');
+
+  const getOrdersInCycle = (cycleLabel: string) => {
+    const completedOrders = orders.filter(o => o.status === 'Completed');
+    return completedOrders.filter(o => getPayPeriodLabel(o.start_date) === cycleLabel);
+  };
 
   // 1. Calculations
   const totalOrders = orders.length;
@@ -217,6 +303,119 @@ export default function DashboardTab({
           </div>
           <div className="mt-2 text-xs text-slate-500 font-mono">
             Metric scale threshold: 10M - 120M
+          </div>
+        </div>
+      </div>
+
+      {/* Expected Payroll Calculator Section */}
+      <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 space-y-4">
+        <div className="hud-grid"></div>
+        
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-cyber-border/40 pb-3 gap-3">
+          <div>
+            <h3 className="font-mono font-bold text-sm text-cyber-cyan uppercase tracking-widest flex items-center gap-1.5">
+              <span>Expected Pay & Payroll Cycles</span>
+              <span className="text-[10px] text-slate-500 font-normal lowercase bg-cyber-cyan/10 px-1.5 py-0.5 rounded border border-cyber-cyan/20">automated</span>
+            </h3>
+            <p className="text-[10px] text-slate-500 font-mono mt-0.5 uppercase tracking-wider">
+              {getCycleRangeLabel(selectedCycle)}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[10px] text-slate-400 uppercase">Target Pay Date:</span>
+            <select
+              value={selectedCycle}
+              onChange={(e) => setSelectedCycle(e.target.value)}
+              className="bg-slate-950 border border-cyber-border rounded px-3 py-1 text-cyber-cyan text-xs font-mono focus:outline-none focus:border-cyber-cyan cursor-pointer"
+            >
+              {availableCycles.map(cycle => (
+                <option key={cycle} value={cycle}>{cycle}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Expected Pay Cards/Table depending on role */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          
+          {/* Card 1: Payout Summary */}
+          <div className="lg:col-span-1 border border-cyber-border/20 rounded p-4 bg-slate-950/40 relative">
+            <div className="font-mono text-[10px] text-slate-400 uppercase tracking-wider">Expected Payout</div>
+            <div className="mt-1.5 flex items-baseline gap-1.5">
+              <span className="text-2xl font-mono font-black text-cyber-green text-glow-green">
+                K{getOrdersInCycle(selectedCycle).reduce((sum, o) => sum + o.payout, 0).toLocaleString()}
+              </span>
+              <span className="text-[9px] text-slate-500 font-mono uppercase">Kwacha</span>
+            </div>
+            <div className="mt-2 font-mono text-[9px] text-slate-500 flex justify-between">
+              <span>Orders Completed:</span>
+              <span className="text-slate-300 font-bold">{getOrdersInCycle(selectedCycle).length}</span>
+            </div>
+            <div className="mt-1 font-mono text-[9px] text-slate-500 flex justify-between">
+              <span>Completed Volume:</span>
+              <span className="text-slate-300 font-bold">
+                {getOrdersInCycle(selectedCycle).reduce((sum, o) => sum + o.size_millions, 0)}M
+              </span>
+            </div>
+          </div>
+
+          {/* Card 2: List (Depending on Role) */}
+          <div className="lg:col-span-3 border border-cyber-border/20 rounded p-4 bg-slate-950/40">
+            {role === 'admin' ? (
+              // Admin View: Breakdown per Gamer
+              <div className="space-y-2">
+                <div className="font-mono text-[10px] text-slate-400 uppercase tracking-wider pb-1.5 border-b border-cyber-border/20">Gamer Payroll Breakdown</div>
+                {gamers.length === 0 ? (
+                  <div className="text-center py-4 font-mono text-[10px] text-slate-500 uppercase">No gamers recruited.</div>
+                ) : (
+                  <div className="max-h-28 overflow-y-auto divide-y divide-cyber-border/20 pr-1">
+                    {gamers.map(g => {
+                      const gamerOrders = getOrdersInCycle(selectedCycle).filter(o => o.gamer_id === g.id);
+                      const totalPayout = gamerOrders.reduce((sum, o) => sum + o.payout, 0);
+                      
+                      return (
+                        <div key={g.id} className="flex justify-between items-center py-1.5 text-[10px] font-mono hover:bg-slate-900/40">
+                          <div>
+                            <span className="font-bold text-slate-300">{g.name}</span>
+                            <span className="text-[9px] text-slate-500 ml-1.5">ID: {g.employee_id}</span>
+                          </div>
+                          <div className="flex gap-4">
+                            <span className="text-slate-400">{gamerOrders.length} orders</span>
+                            <span className="font-bold text-cyber-green">K{totalPayout.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : (
+              // Gamer View: List of Contributing Orders
+              <div className="space-y-2">
+                <div className="font-mono text-[10px] text-slate-400 uppercase tracking-wider pb-1.5 border-b border-cyber-border/20">Your Contributing Orders</div>
+                {getOrdersInCycle(selectedCycle).length === 0 ? (
+                  <div className="text-center py-4 font-mono text-[10px] text-slate-500 uppercase">No completed orders in this period.</div>
+                ) : (
+                  <div className="max-h-28 overflow-y-auto divide-y divide-cyber-border/20 pr-1">
+                    {getOrdersInCycle(selectedCycle).map(order => (
+                      <div key={order.id} className="flex justify-between items-center py-1.5 text-[10px] font-mono hover:bg-slate-900/40">
+                        <div>
+                          <span className="font-bold text-cyber-cyan">{order.order_number}</span>
+                          <span className="text-[9px] text-slate-500 ml-2">
+                            {new Date(order.start_date).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <div className="flex gap-4">
+                          <span className="text-slate-400">{order.size_millions}M</span>
+                          <span className="font-bold text-cyber-green">K{order.payout.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
