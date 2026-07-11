@@ -7,6 +7,8 @@ import { User } from '@supabase/supabase-js';
 
 interface AppContextType {
   user: User | null;
+  role: 'admin' | 'gamer';
+  gamerProfile: Gamer | null;
   gamers: Gamer[];
   orders: Order[];
   loading: boolean;
@@ -15,11 +17,12 @@ interface AppContextType {
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signUp: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
-  addGamer: (name: string, employeeId: string, phone?: string) => Promise<{ success: boolean; error?: string }>;
+  addGamer: (name: string, employeeId: string, email?: string, phone?: string) => Promise<{ success: boolean; error?: string }>;
   updateGamer: (
     id: string,
     name: string,
     employeeId: string,
+    email?: string,
     phone?: string,
     status?: 'active' | 'inactive'
   ) => Promise<{ success: boolean; error?: string }>;
@@ -53,6 +56,8 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [role, setRole] = useState<'admin' | 'gamer'>('admin');
+  const [gamerProfile, setGamerProfile] = useState<Gamer | null>(null);
   const [gamers, setGamers] = useState<Gamer[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
@@ -109,8 +114,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       setGamers([]);
       setOrders([]);
+      setRole('admin');
+      setGamerProfile(null);
     }
   }, [user]);
+
+  // Determine user role and matched gamer profile after data load
+  useEffect(() => {
+    if (user) {
+      const matchedGamer = gamers.find(g => g.email?.toLowerCase() === user.email?.toLowerCase());
+      if (matchedGamer) {
+        setRole('gamer');
+        setGamerProfile(matchedGamer);
+      } else {
+        setRole('admin');
+        setGamerProfile(null);
+      }
+    }
+  }, [gamers, user]);
 
   const loadData = async () => {
     setLoading(true);
@@ -126,7 +147,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           .select('*')
           .order('created_at', { ascending: false });
 
-        // Graceful error handling instead of throwing exceptions
         if (gamersErr || ordersErr) {
           console.error('Database read error:', gamersErr?.message || ordersErr?.message);
           setIsDemo(true);
@@ -187,7 +207,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         sessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
         return { success: true };
       } else {
-        return { success: false, error: 'Invalid credentials. Demo mode defaults: admin@zampeak.com / admin123' };
+        // Allow registering a demo gamer login for testing role switching locally!
+        const savedGamers = localStorage.getItem('zampeak_gamers');
+        if (savedGamers) {
+          const localGamers: Gamer[] = JSON.parse(savedGamers);
+          const matched = localGamers.find(g => g.email?.toLowerCase() === email.toLowerCase());
+          if (matched && password === 'gamer123') {
+            const mockUser = { id: matched.id, email } as User;
+            setUser(mockUser);
+            sessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
+            return { success: true };
+          }
+        }
+        return { success: false, error: 'Invalid credentials. Demo defaults: admin@zampeak.com / admin123. Or gamer email with password gamer123' };
       }
     }
   };
@@ -197,7 +229,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        // Supabase returns user but they might need email confirmation depending on setup
         if (data.user) {
           setUser(data.user);
         }
@@ -207,7 +238,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { success: false, error: err.message };
       }
     } else {
-      // Demo register new
       const mockUser = { id: Math.random().toString(), email } as User;
       setUser(mockUser);
       sessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
@@ -229,11 +259,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   // Gamers operations
-  const addGamer = async (name: string, employeeId: string, phone?: string) => {
+  const addGamer = async (name: string, employeeId: string, email?: string, phone?: string) => {
     const newGamer: Gamer = {
       id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11),
       name,
       employee_id: employeeId,
+      email: email || '',
       phone: phone || '',
       status: 'active',
       created_at: new Date().toISOString(),
@@ -261,12 +292,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     id: string,
     name: string,
     employeeId: string,
+    email?: string,
     phone?: string,
     status?: 'active' | 'inactive'
   ) => {
     if (!isDemo && supabase) {
       try {
-        const updates: Partial<Gamer> = { name, employee_id: employeeId, phone: phone || '' };
+        const updates: Partial<Gamer> = { name, employee_id: employeeId, email: email || '', phone: phone || '' };
         if (status) updates.status = status;
 
         const { error } = await supabase.from('gamers').update(updates).eq('id', id);
@@ -283,7 +315,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       const updated = gamers.map((g) =>
         g.id === id
-          ? { ...g, name, employee_id: employeeId, phone: phone || '', status: status || g.status }
+          ? { ...g, name, employee_id: employeeId, email: email || '', phone: phone || '', status: status || g.status }
           : g
       );
       setGamers(updated);
@@ -487,6 +519,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider
       value={{
         user,
+        role,
+        gamerProfile,
         gamers,
         orders,
         loading,

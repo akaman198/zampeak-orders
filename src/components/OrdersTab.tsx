@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 export default function OrdersTab() {
-  const { orders, gamers, addOrder, updateOrder, deleteOrder, updateOrderStatus } = useApp();
+  const { orders: allOrders, gamers, addOrder, updateOrder, deleteOrder, updateOrderStatus, role, gamerProfile } = useApp();
 
   // Control UI states
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -41,6 +41,11 @@ export default function OrdersTab() {
   const [sortBy, setSortBy] = useState<'date' | 'order_number' | 'size' | 'payout'>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
+  // Filter orders if user is a gamer
+  const orders = role === 'gamer' && gamerProfile
+    ? allOrders.filter(o => o.gamer_id === gamerProfile.id)
+    : allOrders;
+
   // Trigger payout auto-update when sizeMillions changes (unless overridden)
   useEffect(() => {
     if (!isPayoutOverridden) {
@@ -50,6 +55,7 @@ export default function OrdersTab() {
 
   // Set default deployment date on form open
   const openNewOrderForm = () => {
+    if (role !== 'admin') return;
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     
@@ -68,6 +74,7 @@ export default function OrdersTab() {
   };
 
   const openEditOrderForm = (order: Order) => {
+    if (role !== 'admin') return;
     setIsEditing(order);
     setOrderNumber(order.order_number);
     setGamerId(order.gamer_id);
@@ -83,6 +90,7 @@ export default function OrdersTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (role !== 'admin') return;
     if (!orderNumber.trim()) {
       setFormError('Order Number is required.');
       return;
@@ -140,6 +148,7 @@ export default function OrdersTab() {
   };
 
   const handleDelete = async (id: string) => {
+    if (role !== 'admin') return;
     if (confirm('Are you sure you want to terminate this order log?')) {
       const res = await deleteOrder(id);
       if (!res.success) {
@@ -199,7 +208,7 @@ export default function OrdersTab() {
           </span>
           <input 
             type="text" 
-            placeholder="Search by Order ID or Gamer Employee ID..."
+            placeholder="Search by Order ID..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-cyber-dark/80 border border-cyber-border rounded pl-10 pr-3 py-2.5 text-slate-200 focus:outline-none focus:border-cyber-cyan text-xs"
@@ -222,39 +231,44 @@ export default function OrdersTab() {
             <option value="Violation">Violation</option>
           </select>
 
-          {/* Gamer Filter */}
-          <select 
-            value={gamerFilter} 
-            onChange={(e) => setGamerFilter(e.target.value)}
-            className="bg-cyber-dark border border-cyber-border rounded px-3 py-2 text-slate-300 focus:outline-none focus:border-cyber-cyan cursor-pointer max-w-[150px]"
-          >
-            <option value="All">All Gamers</option>
-            {gamers.map(g => (
-              <option key={g.id} value={g.id}>{g.name}</option>
-            ))}
-          </select>
+          {/* Gamer Filter (Only shown to Admin) */}
+          {role === 'admin' && (
+            <select 
+              value={gamerFilter} 
+              onChange={(e) => setGamerFilter(e.target.value)}
+              className="bg-cyber-dark border border-cyber-border rounded px-3 py-2 text-slate-300 focus:outline-none focus:border-cyber-cyan cursor-pointer max-w-[150px]"
+            >
+              <option value="All">All Gamers</option>
+              {gamers.map(g => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          )}
 
-          {gamers.length === 0 ? (
-            <button 
-              disabled 
-              className="flex items-center gap-1 opacity-50 bg-slate-800 text-slate-500 border border-slate-700 px-3 py-2 rounded font-bold cursor-not-allowed"
-            >
-              Recruit Gamers First
-            </button>
-          ) : (
-            <button 
-              onClick={openNewOrderForm}
-              className="flex items-center gap-1 bg-cyber-cyan text-slate-950 font-bold px-3 py-2 rounded hover:bg-cyan-400 shadow-neon-cyan/15 hover:shadow-neon-cyan/25 transition-all cursor-pointer uppercase tracking-wider"
-            >
-              <PlusCircle size={14} />
-              Deploy Order
-            </button>
+          {/* Deploy buttons (Only shown to Admin) */}
+          {role === 'admin' && (
+            gamers.length === 0 ? (
+              <button 
+                disabled 
+                className="flex items-center gap-1 opacity-50 bg-slate-800 text-slate-500 border border-slate-700 px-3 py-2 rounded font-bold cursor-not-allowed"
+              >
+                Recruit Gamers First
+              </button>
+            ) : (
+              <button 
+                onClick={openNewOrderForm}
+                className="flex items-center gap-1 bg-cyber-cyan text-slate-950 font-bold px-3 py-2 rounded hover:bg-cyan-400 shadow-neon-cyan/15 hover:shadow-neon-cyan/25 transition-all cursor-pointer uppercase tracking-wider"
+              >
+                <PlusCircle size={14} />
+                Deploy Order
+              </button>
+            )
           )}
         </div>
       </div>
 
-      {/* Deploy/Edit Order Dialog Overlay */}
-      {isFormOpen && (
+      {/* Deploy/Edit Order Dialog Overlay (Only admin) */}
+      {isFormOpen && role === 'admin' && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="tactical-panel p-6 rounded clip-corners border border-cyber-cyan/40 w-full max-w-lg relative">
             <div className="hud-grid"></div>
@@ -424,7 +438,7 @@ export default function OrdersTab() {
                   >
                     Order Code {sortBy === 'order_number' && (sortDirection === 'asc' ? '▲' : '▼')}
                   </th>
-                  <th className="p-3">Gamer Details</th>
+                  {role === 'admin' && <th className="p-3">Gamer Details</th>}
                   <th 
                     className="p-3 text-right cursor-pointer hover:text-cyber-cyan transition-colors"
                     onClick={() => toggleSort('size')}
@@ -444,7 +458,7 @@ export default function OrdersTab() {
                     Deployed On {sortBy === 'date' && (sortDirection === 'asc' ? '▲' : '▼')}
                   </th>
                   <th className="p-3">Status</th>
-                  <th className="p-3 text-center">Operational Shifts</th>
+                  {role === 'admin' && <th className="p-3 text-center">Operational Shifts</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-cyber-border/30">
@@ -454,10 +468,12 @@ export default function OrdersTab() {
                   return (
                     <tr key={order.id} className="hover:bg-slate-900/30 transition-colors">
                       <td className="p-3 text-cyber-cyan font-bold">{order.order_number}</td>
-                      <td className="p-3">
-                        <div className="font-bold text-slate-300">{assignedGamer ? assignedGamer.name : 'Unknown Gamer'}</div>
-                        <div className="text-[10px] text-slate-500">{assignedGamer ? `ID: ${assignedGamer.employee_id}` : ''}</div>
-                      </td>
+                      {role === 'admin' && (
+                        <td className="p-3">
+                          <div className="font-bold text-slate-300">{assignedGamer ? assignedGamer.name : 'Unknown Gamer'}</div>
+                          <div className="text-[10px] text-slate-500">{assignedGamer ? `ID: ${assignedGamer.employee_id}` : ''}</div>
+                        </td>
+                      )}
                       <td className="p-3 text-right font-bold text-slate-300">
                         {order.size_millions}M
                         <span className="text-[9px] text-slate-500 font-normal block">{order.asset_type || 'Haval Coins'}</span>
@@ -482,59 +498,61 @@ export default function OrdersTab() {
                           {order.status}
                         </span>
                       </td>
-                      <td className="p-3">
-                        <div className="flex items-center justify-center gap-1.5">
-                          {/* Quick Transitions */}
-                          <div className="flex gap-0.5 border border-cyber-border/40 rounded p-0.5 bg-slate-950/80">
-                            <button 
-                              onClick={() => updateOrderStatus(order.id, 'Running')}
-                              title="Set Running"
-                              className={`p-1 rounded transition-colors ${order.status === 'Running' ? 'bg-cyber-cyan text-slate-950' : 'text-slate-400 hover:text-cyber-cyan'}`}
-                            >
-                              <Play size={10} />
-                            </button>
-                            <button 
-                              onClick={() => updateOrderStatus(order.id, 'Paused')}
-                              title="Set Paused"
-                              className={`p-1 rounded transition-colors ${order.status === 'Paused' ? 'bg-cyber-amber text-slate-950' : 'text-slate-400 hover:text-cyber-amber'}`}
-                            >
-                              <Pause size={10} />
-                            </button>
-                            <button 
-                              onClick={() => updateOrderStatus(order.id, 'Completed')}
-                              title="Set Completed"
-                              className={`p-1 rounded transition-colors ${order.status === 'Completed' ? 'bg-cyber-green text-slate-950' : 'text-slate-400 hover:text-cyber-green'}`}
-                            >
-                              <CheckCircle size={10} />
-                            </button>
-                            <button 
-                              onClick={() => updateOrderStatus(order.id, 'Violation')}
-                              title="Set Violation"
-                              className={`p-1 rounded transition-colors ${order.status === 'Violation' ? 'bg-cyber-red text-slate-950 font-bold' : 'text-slate-400 hover:text-cyber-red'}`}
-                            >
-                              <AlertTriangle size={10} />
-                            </button>
-                          </div>
+                      {role === 'admin' && (
+                        <td className="p-3">
+                          <div className="flex items-center justify-center gap-1.5">
+                            {/* Quick Transitions */}
+                            <div className="flex gap-0.5 border border-cyber-border/40 rounded p-0.5 bg-slate-950/80">
+                              <button 
+                                onClick={() => updateOrderStatus(order.id, 'Running')}
+                                title="Set Running"
+                                className={`p-1 rounded transition-colors ${order.status === 'Running' ? 'bg-cyber-cyan text-slate-950' : 'text-slate-400 hover:text-cyber-cyan'}`}
+                              >
+                                <Play size={10} />
+                              </button>
+                              <button 
+                                onClick={() => updateOrderStatus(order.id, 'Paused')}
+                                title="Set Paused"
+                                className={`p-1 rounded transition-colors ${order.status === 'Paused' ? 'bg-cyber-amber text-slate-950' : 'text-slate-400 hover:text-cyber-amber'}`}
+                              >
+                                <Pause size={10} />
+                              </button>
+                              <button 
+                                onClick={() => updateOrderStatus(order.id, 'Completed')}
+                                title="Set Completed"
+                                className={`p-1 rounded transition-colors ${order.status === 'Completed' ? 'bg-cyber-green text-slate-950' : 'text-slate-400 hover:text-cyber-green'}`}
+                              >
+                                <CheckCircle size={10} />
+                              </button>
+                              <button 
+                                onClick={() => updateOrderStatus(order.id, 'Violation')}
+                                title="Set Violation"
+                                className={`p-1 rounded transition-colors ${order.status === 'Violation' ? 'bg-cyber-red text-slate-950 font-bold' : 'text-slate-400 hover:text-cyber-red'}`}
+                              >
+                                <AlertTriangle size={10} />
+                              </button>
+                            </div>
 
-                          {/* Full Edit / Delete */}
-                          <div className="flex gap-1 pl-1 border-l border-cyber-border/30">
-                            <button 
-                              onClick={() => openEditOrderForm(order)}
-                              title="Edit Order parameters"
-                              className="p-1.5 hover:bg-cyber-cyan/15 rounded text-slate-400 hover:text-cyber-cyan transition-colors"
-                            >
-                              <Edit3 size={11} />
-                            </button>
-                            <button 
-                              onClick={() => handleDelete(order.id)}
-                              title="Terminate Log"
-                              className="p-1.5 hover:bg-cyber-red/15 rounded text-slate-400 hover:text-cyber-red transition-colors"
-                            >
-                              <Trash2 size={11} />
-                            </button>
+                            {/* Full Edit / Delete */}
+                            <div className="flex gap-1 pl-1 border-l border-cyber-border/30">
+                              <button 
+                                onClick={() => openEditOrderForm(order)}
+                                title="Edit Order parameters"
+                                className="p-1.5 hover:bg-cyber-cyan/15 rounded text-slate-400 hover:text-cyber-cyan transition-colors"
+                              >
+                                <Edit3 size={11} />
+                              </button>
+                              <button 
+                                onClick={() => handleDelete(order.id)}
+                                title="Terminate Log"
+                                className="p-1.5 hover:bg-cyber-red/15 rounded text-slate-400 hover:text-cyber-red transition-colors"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

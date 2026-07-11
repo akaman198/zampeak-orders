@@ -5,18 +5,12 @@ import { useApp } from '../context/AppContext';
 import { Gamer, Order } from '../types';
 import { 
   UserPlus, 
-  UserCheck, 
-  UserX, 
   Phone, 
-  Calendar, 
+  Mail,
   Trash2, 
   Edit3, 
-  FileText, 
-  Check, 
   X,
   User,
-  ShieldAlert,
-  TrendingUp,
   Award
 } from 'lucide-react';
 
@@ -31,6 +25,7 @@ export default function GamersTab() {
   // Form Fields
   const [name, setName] = useState('');
   const [employeeId, setEmployeeId] = useState('');
+  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [status, setStatus] = useState<'active' | 'inactive'>('active');
   const [formError, setFormError] = useState('');
@@ -39,6 +34,7 @@ export default function GamersTab() {
   const resetForm = () => {
     setName('');
     setEmployeeId('');
+    setEmail('');
     setPhone('');
     setStatus('active');
     setFormError('');
@@ -51,7 +47,7 @@ export default function GamersTab() {
       return;
     }
 
-    const res = await addGamer(name.trim(), employeeId.trim(), phone.trim());
+    const res = await addGamer(name.trim(), employeeId.trim(), email.trim(), phone.trim());
     if (res.success) {
       setIsAdding(false);
       resetForm();
@@ -68,10 +64,10 @@ export default function GamersTab() {
       return;
     }
 
-    const res = await updateGamer(isEditing.id, name.trim(), employeeId.trim(), phone.trim(), status);
+    const res = await updateGamer(isEditing.id, name.trim(), employeeId.trim(), email.trim(), phone.trim(), status);
     if (res.success) {
       if (selectedGamer?.id === isEditing.id) {
-        setSelectedGamer({ ...selectedGamer, name, employee_id: employeeId, phone, status });
+        setSelectedGamer({ ...selectedGamer, name, employee_id: employeeId, email, phone, status });
       }
       setIsEditing(null);
       resetForm();
@@ -97,6 +93,7 @@ export default function GamersTab() {
     setIsEditing(gamer);
     setName(gamer.name);
     setEmployeeId(gamer.employee_id);
+    setEmail(gamer.email || '');
     setPhone(gamer.phone || '');
     setStatus(gamer.status);
     setFormError('');
@@ -251,15 +248,28 @@ export default function GamersTab() {
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-slate-400 uppercase tracking-wider">Phone / Contact Details (Optional)</label>
-                <input 
-                  type="text" 
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="e.g. +260971234567"
-                  className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-slate-400 uppercase tracking-wider">Email (For Gamer Login)</label>
+                  <input 
+                    type="email" 
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="e.g. soap@zampeak.com"
+                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-slate-400 uppercase tracking-wider">Phone Details (Optional)</label>
+                  <input 
+                    type="text" 
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="e.g. +260971234567"
+                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan"
+                  />
+                </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-3">
@@ -321,7 +331,17 @@ export default function GamersTab() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-slate-400 uppercase tracking-wider">Email</label>
+                  <input 
+                    type="email" 
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan"
+                  />
+                </div>
+
                 <div className="space-y-1">
                   <label className="text-slate-400 uppercase tracking-wider">Phone / Contact</label>
                   <input 
@@ -337,7 +357,7 @@ export default function GamersTab() {
                   <select 
                     value={status} 
                     onChange={(e) => setStatus(e.target.value as 'active' | 'inactive')}
-                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan"
+                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer"
                   >
                     <option value="active">Active (On Duty)</option>
                     <option value="inactive">Inactive (Suspended)</option>
@@ -367,7 +387,6 @@ export default function GamersTab() {
         {/* State 3: Gamer Detail Dossier View */}
         {selectedGamer && !isAdding && !isEditing && (
           <div className="space-y-6">
-            {/* Profile Overview Card */}
             <div className="tactical-panel p-6 rounded clip-corners border border-cyber-cyan/30 relative">
               <div className="hud-grid"></div>
               
@@ -376,8 +395,11 @@ export default function GamersTab() {
                   <h3 className="font-mono font-black text-xl text-slate-200 tracking-wider flex items-center gap-2 uppercase">
                     {selectedGamer.name}
                   </h3>
-                  <div className="font-mono text-xs text-cyber-cyan mt-1 flex items-center gap-4">
+                  <div className="font-mono text-xs text-cyber-cyan mt-1.5 flex flex-wrap gap-x-6 gap-y-1">
                     <span>EMPLOYEE ID: {selectedGamer.employee_id}</span>
+                    {selectedGamer.email && (
+                      <span className="flex items-center gap-1 text-slate-400"><Mail size={12} /> {selectedGamer.email}</span>
+                    )}
                     {selectedGamer.phone && (
                       <span className="flex items-center gap-1 text-slate-400"><Phone size={12} /> {selectedGamer.phone}</span>
                     )}
@@ -482,7 +504,7 @@ export default function GamersTab() {
           </div>
         )}
 
-        {/* State 4: Default Select Dossier Placeholder */}
+        {/* State 4: Default Dossier Placeholder */}
         {!selectedGamer && !isAdding && !isEditing && (
           <div className="tactical-panel p-8 rounded clip-corners border border-cyber-border/30 h-full flex flex-col items-center justify-center text-center py-20 relative">
             <div className="hud-grid"></div>

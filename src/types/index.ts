@@ -5,6 +5,7 @@ export interface Gamer {
   id: string;
   name: string;
   employee_id: string;
+  email?: string;
   phone?: string;
   status: 'active' | 'inactive';
   created_at: string;

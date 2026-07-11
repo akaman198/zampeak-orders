@@ -131,6 +131,7 @@ CREATE TABLE public.gamers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     employee_id TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE,
     phone TEXT,
     status TEXT NOT NULL DEFAULT 'active',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL

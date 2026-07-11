@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import DashboardTab from '../components/DashboardTab';
 import GamersTab from '../components/GamersTab';
@@ -14,13 +14,12 @@ import {
   Terminal,
   Activity,
   LogOut,
-  ChevronRight,
   Database,
   Lock
 } from 'lucide-react';
 
 export default function Home() {
-  const { user, loading, authLoading, isDemo, signIn, signUp, signOut } = useApp();
+  const { user, role, loading, authLoading, isDemo, signIn, signUp, signOut } = useApp();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'gamers' | 'orders' | 'reports'>('dashboard');
 
   // Auth Screen States
@@ -29,6 +28,13 @@ export default function Home() {
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [authSubmitting, setAuthSubmitting] = useState(false);
+
+  // Redirect if gamer tries to access forbidden tabs
+  useEffect(() => {
+    if (role === 'gamer' && (activeTab === 'gamers' || activeTab === 'reports')) {
+      setActiveTab('dashboard');
+    }
+  }, [role, activeTab]);
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,7 +70,7 @@ export default function Home() {
           <Terminal className="text-cyber-cyan animate-pulse" size={32} />
         </div>
         <p className="mt-6 text-sm uppercase tracking-widest animate-pulse">
-          Decrypting Security Clearence...
+          Decrypting Security Clearance...
         </p>
       </div>
     );
@@ -76,14 +82,12 @@ export default function Home() {
       <div className="flex-1 flex flex-col items-center justify-center bg-cyber-bg min-h-screen p-4 relative overflow-hidden font-mono">
         <div className="absolute inset-0 bg-cyber-grid pointer-events-none"></div>
         
-        {/* Glow Sphere in background */}
         <div className="absolute w-96 h-96 rounded-full bg-cyber-cyan/5 blur-3xl -top-20 -left-20"></div>
         <div className="absolute w-96 h-96 rounded-full bg-cyber-green/5 blur-3xl -bottom-20 -right-20"></div>
 
         <div className="w-full max-w-md tactical-panel p-6 rounded clip-corners border border-cyber-cyan/30 bg-cyber-dark/80 relative z-10 shadow-2xl">
           <div className="hud-grid"></div>
 
-          {/* Logo Brand */}
           <div className="text-center border-b border-cyber-border/40 pb-5 mb-6">
             <div className="mx-auto w-12 h-12 bg-cyber-cyan/15 rounded border border-cyber-cyan/35 flex items-center justify-center text-cyber-cyan glow-pulse-cyan mb-3">
               <Lock size={20} />
@@ -104,10 +108,10 @@ export default function Home() {
             )}
 
             {isDemo && (
-              <div className="p-3 border border-cyber-amber/35 bg-cyber-amber/5 text-cyber-amber rounded text-[10px] leading-relaxed">
-                <strong>DEMO HINT:</strong> Local testing mode is running. Sign in using the default credentials:<br />
-                <span className="text-slate-300 font-bold">Email:</span> admin@zampeak.com<br />
-                <span className="text-slate-300 font-bold">Password:</span> admin123
+              <div className="p-3 border border-cyber-amber/35 bg-cyber-amber/5 text-cyber-amber rounded text-[10px] leading-relaxed space-y-1">
+                <div><strong>DEMO AUTH ACTIVE:</strong> Sign in with:</div>
+                <div><span className="text-slate-300 font-bold">Admin:</span> admin@zampeak.com / admin123</div>
+                <div><span className="text-slate-300 font-bold">Gamer:</span> Recruit a gamer email (e.g. ghost@zampeak.com), and sign in using password <span className="text-slate-300 font-bold">gamer123</span></div>
               </div>
             )}
 
@@ -206,7 +210,7 @@ export default function Home() {
             </div>
             <div className="h-3 w-px bg-cyber-border"></div>
             <div>
-              <span>OPERATOR: <span className="text-slate-200 font-bold select-all">{user.email}</span></span>
+              <span>OPERATOR: <span className="text-slate-200 font-bold select-all">{user.email}</span> ({role.toUpperCase()})</span>
             </div>
             <div className="h-3 w-px bg-cyber-border"></div>
             <div className="flex items-center gap-1.5">
@@ -233,17 +237,21 @@ export default function Home() {
                 <LayoutDashboard size={12} />
                 Dashboard
               </button>
-              <button 
-                onClick={() => setActiveTab('gamers')}
-                className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer ${
-                  activeTab === 'gamers' 
-                    ? 'bg-cyber-cyan text-slate-950 shadow-neon-cyan/25' 
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                }`}
-              >
-                <Users size={12} />
-                Gamers
-              </button>
+              
+              {role === 'admin' && (
+                <button 
+                  onClick={() => setActiveTab('gamers')}
+                  className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer ${
+                    activeTab === 'gamers' 
+                      ? 'bg-cyber-cyan text-slate-950 shadow-neon-cyan/25' 
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                  }`}
+                >
+                  <Users size={12} />
+                  Gamers
+                </button>
+              )}
+
               <button 
                 onClick={() => setActiveTab('orders')}
                 className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer ${
@@ -255,17 +263,20 @@ export default function Home() {
                 <Gamepad2 size={12} />
                 Orders
               </button>
-              <button 
-                onClick={() => setActiveTab('reports')}
-                className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer ${
-                  activeTab === 'reports' 
-                    ? 'bg-cyber-cyan text-slate-950 shadow-neon-cyan/25' 
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                }`}
-              >
-                <FileBarChart2 size={12} />
-                Reports
-              </button>
+
+              {role === 'admin' && (
+                <button 
+                  onClick={() => setActiveTab('reports')}
+                  className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer ${
+                    activeTab === 'reports' 
+                      ? 'bg-cyber-cyan text-slate-950 shadow-neon-cyan/25' 
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                  }`}
+                >
+                  <FileBarChart2 size={12} />
+                  Reports
+                </button>
+              )}
             </nav>
 
             {/* Log Out Button */}
