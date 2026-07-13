@@ -25,7 +25,7 @@ export default function DashboardTab({
   const isManager = role === 'admin' || (role === 'gamer' && gamerProfile?.gamer_role === 'technical_manager');
 
   // Filter orders if user is a gamer
-  const orders = role === 'gamer' && gamerProfile && gamerProfile.gamer_role !== 'technical_manager'
+  const orders = role === 'gamer' && gamerProfile
     ? allOrders.filter(o => o.gamer_id === gamerProfile.id)
     : allOrders;
 
@@ -185,9 +185,11 @@ export default function DashboardTab({
   const violationOrders = orders.filter(o => o.status === 'Violation').length;
   const activeOrders = runningOrders + pausedOrders;
 
-  const totalEarnings = orders
-    .filter(o => o.status === 'Completed')
-    .reduce((sum, o) => sum + o.payout, 0);
+  const activeCycle = selectedCycle || currentMonthCycle;
+
+  const totalEarnings = role === 'gamer' && gamerProfile
+    ? calculatePayroll(gamerProfile.id, activeCycle).totalPay
+    : orders.filter(o => o.status === 'Completed').reduce((sum, o) => sum + o.payout, 0);
 
   const totalAssetsFarmed = orders
     .filter(o => o.status === 'Completed')
@@ -246,10 +248,10 @@ export default function DashboardTab({
         <div>
           <h2 className="text-xl font-mono font-bold tracking-wider text-cyber-cyan uppercase flex items-center gap-2">
             <span className="h-2 w-2 bg-cyber-cyan rounded-full animate-ping"></span>
-            {isManager ? 'Operational Command Center' : 'Gamer Data Access terminal'}
+            {role === 'admin' ? 'Operational Command Center' : 'Gamer Data Access terminal'}
           </h2>
           <p className="text-xs text-slate-400 font-mono mt-1">
-            TARGET: DELTA FORCE MOBILE — {isManager ? 'AGENT RECORDS & METRIC AUDITS' : `MY PERFORMANCE PORTFOLIO ID: ${gamerProfile?.employee_id}`}
+            TARGET: DELTA FORCE MOBILE — {role === 'admin' ? 'AGENT RECORDS & METRIC AUDITS' : `MY PERFORMANCE PORTFOLIO ID: ${gamerProfile?.employee_id}`}
           </p>
           <div className="text-[11px] font-mono text-slate-300 mt-2 flex items-center gap-1.5">
             <span className="text-slate-500 uppercase">OPERATOR:</span>
@@ -277,7 +279,7 @@ export default function DashboardTab({
           <div className="absolute right-2 bottom-2 text-cyber-cyan/10 group-hover:text-cyber-cyan/20 transition-colors">
             <Gamepad2 size={64} />
           </div>
-          <div className="font-mono text-xs text-slate-400 uppercase tracking-widest">{isManager ? 'Total Missions' : 'My Missions'}</div>
+          <div className="font-mono text-xs text-slate-400 uppercase tracking-widest">{role === 'admin' ? 'Total Missions' : 'My Missions'}</div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-3xl font-mono font-black text-cyber-cyan text-glow-cyan">{totalOrders}</span>
             <span className="text-xs text-slate-500 font-mono">Assigned</span>
@@ -293,14 +295,14 @@ export default function DashboardTab({
           <div className="absolute right-2 bottom-2 text-cyber-green/10 group-hover:text-cyber-green/20 transition-colors">
             <DollarSign size={64} />
           </div>
-          <div className="font-mono text-xs text-slate-400 uppercase tracking-widest font-bold">{isManager ? 'Total Expected Pay' : 'My Earnings'}</div>
+          <div className="font-mono text-xs text-slate-400 uppercase tracking-widest font-bold">{role === 'admin' ? 'Total Expected Pay' : 'My Earnings'}</div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-3xl font-mono font-black text-cyber-green text-glow-green">K{totalEarnings}</span>
             <span className="text-xs text-slate-500 font-mono">Kwacha</span>
           </div>
           <div className="mt-2 text-xs text-slate-400 font-mono flex justify-between">
             <span>Farmed: {totalAssetsFarmed}M</span>
-            {isManager && (
+            {role === 'admin' && (
               <span className="text-cyber-green cursor-pointer hover:underline" onClick={() => onNavigate('reports')}>Reports &rarr;</span>
             )}
           </div>
@@ -353,7 +355,8 @@ export default function DashboardTab({
       </div>
 
       {/* Expected Payroll Calculator Section */}
-      <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 space-y-4">
+      {gamerProfile?.gamer_role !== 'technical_manager' && (
+        <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 space-y-4">
         <div className="hud-grid"></div>
         
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-cyber-border/40 pb-3 gap-3">
@@ -479,7 +482,7 @@ export default function DashboardTab({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5 py-1">
                       <div className="flex justify-between">
                         <span className="text-slate-500">Contract Base Pay:</span>
-                        <span className="font-bold text-slate-300">K{payroll.baseSalary} ({gamerProfile!.level} {gamerProfile!.gamer_role === 'team_leader' ? 'TL' : gamerProfile!.gamer_role === 'technical_manager' ? 'TM' : 'Gamer'})</span>
+                        <span className="font-bold text-slate-300">K{payroll.baseSalary} ({gamerProfile!.level} {(gamerProfile!.gamer_role as string) === 'team_leader' ? 'TL' : (gamerProfile!.gamer_role as string) === 'technical_manager' ? 'TM' : 'Gamer'})</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-500">Daily Attendance Rate:</span>
@@ -521,12 +524,13 @@ export default function DashboardTab({
           </div>
         </div>
       </div>
+      )}
 
       {/* Main Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Donut Chart (Expanded to full width if gamer, to keep layout beautiful) */}
         <div className={`tactical-panel p-5 rounded clip-corners border border-cyber-border/40 flex flex-col justify-between ${
-          isManager ? 'lg:col-span-1' : 'lg:col-span-3'
+          role === 'admin' ? 'lg:col-span-1' : 'lg:col-span-3'
         }`}>
           <div>
             <h3 className="font-mono font-bold text-sm text-slate-300 uppercase tracking-widest border-b border-cyber-border/40 pb-2 mb-4 flex justify-between items-center">
@@ -584,8 +588,8 @@ export default function DashboardTab({
           </div>
         </div>
 
-        {/* Center Widget: Gamer & Team Rankings (Only shown to Admin & Technical Manager) */}
-        {isManager && (
+        {/* Center Widget: Gamer & Team Rankings (Only shown to Admin) */}
+        {role === 'admin' && (
           <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
             
             {/* Gamers Leaderboard */}
