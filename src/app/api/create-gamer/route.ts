@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 
 export async function POST(request: Request) {
   try {
-    const { name, employeeId, defaultPassword, phone } = await request.json();
+    const { name, employeeId, defaultPassword, phone, level, gamer_role, team_leader_id } = await request.json();
 
     if (!name || !employeeId || !defaultPassword) {
       return NextResponse.json({ error: 'Name, Employee ID, and Default Password are required.' }, { status: 400 });
@@ -51,6 +51,9 @@ export async function POST(request: Request) {
       default_password: defaultPassword,
       phone: phone || '',
       status: 'active',
+      level: level || 'beginner',
+      gamer_role: gamer_role || 'gamer',
+      team_leader_id: team_leader_id || null,
       created_at: new Date().toISOString()
     };
 

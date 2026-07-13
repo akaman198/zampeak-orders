@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import DashboardTab from '../components/DashboardTab';
 import GamersTab from '../components/GamersTab';
+import AttendanceTab from '../components/AttendanceTab';
 import OrdersTab from '../components/OrdersTab';
 import ReportsTab from '../components/ReportsTab';
 import { 
@@ -17,12 +18,13 @@ import {
   Database,
   Lock,
   Key,
-  X
+  X,
+  Calendar
 } from 'lucide-react';
 
 export default function Home() {
   const { user, role, gamerProfile, loading, authLoading, isDemo, gamers, orders, signIn, signUp, signOut, updatePassword } = useApp();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'gamers' | 'orders' | 'reports'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'gamers' | 'attendance' | 'orders' | 'reports'>('dashboard');
 
   // Auth Screen States
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
@@ -40,7 +42,7 @@ export default function Home() {
 
   // Redirect if gamer tries to access forbidden tabs
   useEffect(() => {
-    if (role === 'gamer' && (activeTab === 'gamers' || activeTab === 'reports')) {
+    if (role === 'gamer' && (activeTab === 'gamers' || activeTab === 'reports' || activeTab === 'attendance')) {
       setActiveTab('dashboard');
     }
   }, [role, activeTab]);
@@ -307,6 +309,20 @@ export default function Home() {
                 </button>
               )}
 
+              {role === 'admin' && (
+                <button 
+                  onClick={() => setActiveTab('attendance')}
+                  className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer ${
+                    activeTab === 'attendance' 
+                      ? 'bg-cyber-cyan text-slate-950 shadow-neon-cyan/25' 
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                  }`}
+                >
+                  <Calendar size={12} />
+                  Attendance
+                </button>
+              )}
+
               <button 
                 onClick={() => setActiveTab('orders')}
                 className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer ${
@@ -355,10 +371,10 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Command Dashboard Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
-        {activeTab === 'dashboard' && <DashboardTab onNavigate={(tab) => setActiveTab(tab)} />}
+        {activeTab === 'dashboard' && <DashboardTab onNavigate={(tab) => setActiveTab(tab as any)} />}
         {activeTab === 'gamers' && <GamersTab />}
+        {activeTab === 'attendance' && <AttendanceTab />}
         {activeTab === 'orders' && <OrdersTab />}
         {activeTab === 'reports' && <ReportsTab />}
       </main>

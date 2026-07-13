@@ -20,7 +20,7 @@ export default function DashboardTab({
 }: { 
   onNavigate: (tab: 'dashboard' | 'gamers' | 'orders' | 'reports') => void 
 }) {
-  const { orders: allOrders, gamers, updateOrderStatus, role, gamerProfile, isDemo, user } = useApp();
+  const { orders: allOrders, gamers, updateOrderStatus, role, gamerProfile, isDemo, user, calculatePayroll } = useApp();
 
   // Filter orders if user is a gamer
   const orders = role === 'gamer' && gamerProfile
@@ -29,7 +29,9 @@ export default function DashboardTab({
 
   // Helper to calculate pay period label from a date string
   const getPayPeriodLabel = (dateStr: string) => {
-    const date = new Date(dateStr);
+    if (!dateStr) return '';
+    const normalizedStr = dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`;
+    const date = new Date(normalizedStr);
     let year = date.getFullYear();
     let month = date.getMonth(); // 0-indexed
     const day = date.getDate();
@@ -116,6 +118,62 @@ export default function DashboardTab({
     return completedOrders.filter(o => getPayPeriodLabel(o.start_date) === cycleLabel);
   };
 
+  // Group/Team calculations for the cycle
+  const teamLeaders = gamers.filter(g => g.gamer_role === 'team_leader' && g.status === 'active');
+  
+  const teamSummaries = teamLeaders.map(tl => {
+    const members = gamers.filter(g => g.team_leader_id === tl.id);
+    const teamIds = [tl.id, ...members.map(m => m.id)];
+    const teamOrders = allOrders.filter(
+      o => o.status === 'Completed' && teamIds.includes(o.gamer_id) && getPayPeriodLabel(o.start_date) === selectedCycle
+    );
+    const totalAssets = teamOrders.reduce((sum, o) => sum + Number(o.size_millions), 0);
+    const totalPayout = teamOrders.reduce((sum, o) => sum + Number(o.payout), 0);
+
+    return {
+      leaderId: tl.id,
+      leaderName: tl.name,
+      gamer_role: tl.gamer_role,
+      level: tl.level,
+      memberCount: members.length,
+      totalAssetsFarmed: totalAssets,
+      totalPayout,
+      gamerDetails: teamIds.map(id => {
+        const g = gamers.find(gam => gam.id === id)!;
+        const gOrders = teamOrders.filter(o => o.gamer_id === id);
+        const assets = gOrders.reduce((sum, o) => sum + Number(o.size_millions), 0);
+        const payout = gOrders.reduce((sum, o) => sum + Number(o.payout), 0);
+        return {
+          gamerId: id,
+          gamerName: g?.name || 'Unknown',
+          employeeId: g?.employee_id || 'N/A',
+          assetsFarmed: assets,
+          payout
+        };
+      })
+    };
+  });
+
+  // Gamers rankings (Assets Farmed in Millions during this cycle)
+  const cycleOrders = allOrders.filter(
+    o => o.status === 'Completed' && getPayPeriodLabel(o.start_date) === selectedCycle
+  );
+  const gamerFarmedStats = gamers
+    .map(g => {
+      const gOrders = cycleOrders.filter(o => o.gamer_id === g.id);
+      const farmed = gOrders.reduce((sum, o) => sum + Number(o.size_millions), 0);
+      return { gamer: g, farmed };
+    })
+    .filter(g => g.farmed > 0)
+    .sort((a, b) => b.farmed - a.farmed)
+    .slice(0, 4);
+
+  // Teams rankings (Assets Farmed in Millions during this cycle)
+  const teamFarmedStats = teamSummaries
+    .filter(t => t.totalAssetsFarmed > 0)
+    .sort((a, b) => b.totalAssetsFarmed - a.totalAssetsFarmed)
+    .slice(0, 4);
+
   // 1. Calculations
   const totalOrders = orders.length;
   const completedOrders = orders.filter(o => o.status === 'Completed').length;
@@ -148,24 +206,6 @@ export default function DashboardTab({
   const recentOrders = [...orders]
     .sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime())
     .slice(0, 5);
-
-  // Gamer stats for ranking (Only shown to Admin)
-  const gamerStats = gamers.map(gamer => {
-    const gamerOrders = allOrders.filter(o => o.gamer_id === gamer.id);
-    const completed = gamerOrders.filter(o => o.status === 'Completed');
-    const earnings = completed.reduce((sum, o) => sum + o.payout, 0);
-    const farmed = completed.reduce((sum, o) => sum + o.size_millions, 0);
-    return {
-      gamer,
-      total: gamerOrders.length,
-      completed: completed.length,
-      earnings,
-      farmed
-    };
-  })
-  .filter(g => g.total > 0)
-  .sort((a, b) => b.earnings - a.earnings)
-  .slice(0, 4);
 
   const handleQuickStatus = async (orderId: string, newStatus: OrderStatus) => {
     if (role === 'admin') {
@@ -343,49 +383,80 @@ export default function DashboardTab({
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
           
           {/* Card 1: Payout Summary */}
-          <div className="lg:col-span-1 border border-cyber-border/20 rounded p-4 bg-slate-950/40 relative">
-            <div className="font-mono text-[10px] text-slate-400 uppercase tracking-wider">Expected Payout</div>
-            <div className="mt-1.5 flex items-baseline gap-1.5">
-              <span className="text-2xl font-mono font-black text-cyber-green text-glow-green">
-                K{getOrdersInCycle(selectedCycle).reduce((sum, o) => sum + o.payout, 0).toLocaleString()}
-              </span>
-              <span className="text-[9px] text-slate-500 font-mono uppercase">Kwacha</span>
-            </div>
-            <div className="mt-2 font-mono text-[9px] text-slate-500 flex justify-between">
-              <span>Orders Completed:</span>
-              <span className="text-slate-300 font-bold">{getOrdersInCycle(selectedCycle).length}</span>
-            </div>
-            <div className="mt-1 font-mono text-[9px] text-slate-500 flex justify-between">
-              <span>Completed Volume:</span>
-              <span className="text-slate-300 font-bold">
-                {getOrdersInCycle(selectedCycle).reduce((sum, o) => sum + o.size_millions, 0)}M
-              </span>
-            </div>
-          </div>
+          {(() => {
+            if (role === 'admin') {
+              const activeOperators = gamers.filter(g => g.status === 'active');
+              const allPayrolls = activeOperators.map(g => calculatePayroll(g.id, selectedCycle));
+              const centralExpectedPayout = allPayrolls.reduce((sum, p) => sum + p.totalPay, 0);
+              const centralTotalOrdersCount = getOrdersInCycle(selectedCycle).length;
+              const centralCompletedVolume = getOrdersInCycle(selectedCycle).reduce((sum, o) => sum + o.size_millions, 0);
+
+              return (
+                <div className="lg:col-span-1 border border-cyber-border/20 rounded p-4 bg-slate-950/40 relative">
+                  <div className="font-mono text-[10px] text-slate-400 uppercase tracking-wider">Expected Group Payroll</div>
+                  <div className="mt-1.5 flex items-baseline gap-1.5">
+                    <span className="text-2xl font-mono font-black text-cyber-green text-glow-green">
+                      K{centralExpectedPayout.toLocaleString()}
+                    </span>
+                    <span className="text-[9px] text-slate-500 font-mono uppercase">Kwacha</span>
+                  </div>
+                  <div className="mt-2 font-mono text-[9px] text-slate-500 flex justify-between">
+                    <span>Missions Completed:</span>
+                    <span className="text-slate-300 font-bold">{centralTotalOrdersCount}</span>
+                  </div>
+                  <div className="mt-1 font-mono text-[9px] text-slate-500 flex justify-between">
+                    <span>Farmed Volume:</span>
+                    <span className="text-slate-300 font-bold">
+                      {centralCompletedVolume}M
+                    </span>
+                  </div>
+                </div>
+              );
+            } else {
+              const payroll = calculatePayroll(gamerProfile!.id, selectedCycle);
+              return (
+                <div className="lg:col-span-1 border border-cyber-border/20 rounded p-4 bg-slate-950/40 relative font-mono text-xs">
+                  <div className="text-[10px] text-slate-400 uppercase tracking-wider">Your Expected Payout</div>
+                  <div className="mt-1.5 flex items-baseline gap-1.5">
+                    <span className="text-2xl font-black text-cyber-green text-glow-green">
+                      K{payroll.totalPay.toLocaleString()}
+                    </span>
+                    <span className="text-[9px] text-slate-500 uppercase">Kwacha</span>
+                  </div>
+                  <div className="mt-2 text-[9px] text-slate-500 flex justify-between">
+                    <span>Days Worked:</span>
+                    <span className="text-slate-300 font-bold">{payroll.daysWorked} / 26 days</span>
+                  </div>
+                  <div className="mt-1 text-[9px] text-slate-500 flex justify-between">
+                    <span>Completed Orders:</span>
+                    <span className="text-slate-300 font-bold">{getOrdersInCycle(selectedCycle).length}</span>
+                  </div>
+                </div>
+              );
+            }
+          })()}
 
           {/* Card 2: List (Depending on Role) */}
           <div className="lg:col-span-3 border border-cyber-border/20 rounded p-4 bg-slate-950/40">
             {role === 'admin' ? (
               // Admin View: Breakdown per Gamer
               <div className="space-y-2">
-                <div className="font-mono text-[10px] text-slate-400 uppercase tracking-wider pb-1.5 border-b border-cyber-border/20">Gamer Payroll Breakdown</div>
+                <div className="font-mono text-[10px] text-slate-400 uppercase tracking-wider pb-1.5 border-b border-cyber-border/20">Operational Payroll Ledger</div>
                 {gamers.length === 0 ? (
-                  <div className="text-center py-4 font-mono text-[10px] text-slate-500 uppercase">No gamers recruited.</div>
+                  <div className="text-center py-4 font-mono text-[10px] text-slate-500 uppercase">No operators recruited.</div>
                 ) : (
                   <div className="max-h-28 overflow-y-auto divide-y divide-cyber-border/20 pr-1">
-                    {gamers.map(g => {
-                      const gamerOrders = getOrdersInCycle(selectedCycle).filter(o => o.gamer_id === g.id);
-                      const totalPayout = gamerOrders.reduce((sum, o) => sum + o.payout, 0);
-                      
+                    {gamers.filter(g => g.status === 'active').map(g => {
+                      const payroll = calculatePayroll(g.id, selectedCycle);
                       return (
                         <div key={g.id} className="flex justify-between items-center py-1.5 text-[10px] font-mono hover:bg-slate-900/40">
                           <div>
                             <span className="font-bold text-slate-300">{g.name}</span>
-                            <span className="text-[9px] text-slate-500 ml-1.5">ID: {g.employee_id}</span>
+                            <span className="text-[9px] text-slate-500 ml-1.5 capitalize">({g.gamer_role?.replace('_', ' ')} - {g.level})</span>
                           </div>
                           <div className="flex gap-4">
-                            <span className="text-slate-400">{gamerOrders.length} orders</span>
-                            <span className="font-bold text-cyber-green">K{totalPayout.toLocaleString()}</span>
+                            <span className="text-slate-400">{payroll.daysWorked}/26 days</span>
+                            <span className="font-bold text-cyber-green">K{payroll.totalPay.toLocaleString()}</span>
                           </div>
                         </div>
                       );
@@ -394,30 +465,54 @@ export default function DashboardTab({
                 )}
               </div>
             ) : (
-              // Gamer View: List of Contributing Orders
-              <div className="space-y-2">
-                <div className="font-mono text-[10px] text-slate-400 uppercase tracking-wider pb-1.5 border-b border-cyber-border/20">Your Contributing Orders</div>
-                {getOrdersInCycle(selectedCycle).length === 0 ? (
-                  <div className="text-center py-4 font-mono text-[10px] text-slate-500 uppercase">No completed orders in this period.</div>
-                ) : (
-                  <div className="max-h-28 overflow-y-auto divide-y divide-cyber-border/20 pr-1">
-                    {getOrdersInCycle(selectedCycle).map(order => (
-                      <div key={order.id} className="flex justify-between items-center py-1.5 text-[10px] font-mono hover:bg-slate-900/40">
-                        <div>
-                          <span className="font-bold text-cyber-cyan">{order.order_number}</span>
-                          <span className="text-[9px] text-slate-500 ml-2">
-                            {new Date(order.start_date).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <div className="flex gap-4">
-                          <span className="text-slate-400">{order.size_millions}M</span>
-                          <span className="font-bold text-cyber-green">K{order.payout.toLocaleString()}</span>
-                        </div>
+              // Gamer View: Personal HR details panel
+              (() => {
+                const payroll = calculatePayroll(gamerProfile!.id, selectedCycle);
+                return (
+                  <div className="space-y-2 font-mono text-[10px] text-slate-300">
+                    <div className="text-slate-400 uppercase tracking-wider pb-1.5 border-b border-cyber-border/20 flex justify-between">
+                      <span>Personal HR Portfolio</span>
+                      <span className="text-cyber-cyan text-[9px]">Shift: 9AM - 6PM (8H + 1H Lunch)</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5 py-1">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Contract Base Pay:</span>
+                        <span className="font-bold text-slate-300">K{payroll.baseSalary} ({gamerProfile!.level} {gamerProfile!.gamer_role === 'team_leader' ? 'TL' : gamerProfile!.gamer_role === 'technical_manager' ? 'TM' : 'Gamer'})</span>
                       </div>
-                    ))}
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Daily Attendance Rate:</span>
+                        <span className="font-bold text-slate-300">K{payroll.dailyRate.toFixed(2)} per day</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Days Present base:</span>
+                        <span className="font-bold text-cyber-green">K{payroll.basePayEarned.toFixed(2)} ({payroll.daysWorked} days)</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Missed Day Deductions:</span>
+                        <span className="font-bold text-cyber-red">K-{(payroll.deductions - payroll.lateDeduction).toFixed(2)} ({Math.max(0, 26 - payroll.daysWorked)} days)</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Late Attendance Deductions (K20/day):</span>
+                        <span className="font-bold text-cyber-red">K-{payroll.lateDeduction.toFixed(2)} ({Math.round(payroll.lateDeduction / 20)} days)</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">On-Time Perfect Bonus:</span>
+                        <span className="font-bold text-cyber-green">K{payroll.attendanceBonus} (On-time: {payroll.onTimeDays}/26 days)</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Orders completed bonus:</span>
+                        <span className="font-bold text-cyber-green">K{payroll.orderBonus.toLocaleString()}</span>
+                      </div>
+                      {gamerProfile!.gamer_role === 'team_leader' && (
+                        <div className="flex justify-between col-span-2 border-t border-cyber-border/20 pt-1.5">
+                          <span className="text-slate-500">Team volume bonus (&gt;50M/day):</span>
+                          <span className="font-bold text-cyber-green">K{payroll.teamVolumeBonus}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
+                );
+              })()
             )}
           </div>
         </div>
@@ -460,7 +555,7 @@ export default function DashboardTab({
                         strokeDashoffset={s.strokeDashoffset}
                         className="transition-all duration-1000 ease-out"
                         style={{
-                          filter: `drop-shadow(0 0 3px ${s.color}44)`
+                           filter: `drop-shadow(0 0 3px ${s.color}44)`
                         }}
                       />
                     ))}
@@ -485,62 +580,169 @@ export default function DashboardTab({
           </div>
         </div>
 
-        {/* Center Widget: Gamer Rankings (Only shown to Admin) */}
+        {/* Center Widget: Gamer & Team Rankings (Only shown to Admin) */}
         {role === 'admin' && (
-          <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 lg:col-span-2">
-            <h3 className="font-mono font-bold text-sm text-slate-300 uppercase tracking-widest border-b border-cyber-border/40 pb-2 mb-4 flex justify-between items-center">
-              <span>Gamers Earnings Leaderboard</span>
-              <span className="text-xs text-cyber-cyan font-mono cursor-pointer hover:underline" onClick={() => onNavigate('gamers')}>View All Gamers</span>
-            </h3>
+          <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Gamers Leaderboard */}
+            <div>
+              <h3 className="font-mono font-bold text-sm text-slate-300 uppercase tracking-widest border-b border-cyber-border/40 pb-2 mb-4 flex justify-between items-center">
+                <span>Best Performing Gamers</span>
+                <span className="text-xs text-cyber-cyan font-mono cursor-pointer hover:underline" onClick={() => onNavigate('gamers')}>View Dossiers</span>
+              </h3>
 
-            {gamerStats.length === 0 ? (
-              <div className="h-48 flex items-center justify-center font-mono text-slate-500 text-xs">
-                NO ACTIVE GAMERS WITH COMPLETED MISSIONS FOUND
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {gamerStats.map((item, idx) => {
-                  const maxEarnings = Math.max(...gamerStats.map(g => g.earnings)) || 1;
-                  const widthPercent = Math.max(15, Math.round((item.earnings / maxEarnings) * 100));
+              {gamerFarmedStats.length === 0 ? (
+                <div className="h-48 flex items-center justify-center font-mono text-slate-500 text-xs">
+                  NO ACTIVE DIVISION RECORDS DETECTED
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {gamerFarmedStats.map((item, idx) => {
+                    const maxFarmed = Math.max(...gamerFarmedStats.map(g => g.farmed)) || 1;
+                    const widthPercent = Math.max(15, Math.round((item.farmed / maxFarmed) * 100));
 
-                  return (
-                    <div key={item.gamer.id} className="space-y-1">
-                      <div className="flex justify-between items-center font-mono text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold border ${
-                            idx === 0 ? 'bg-cyber-cyan/20 border-cyber-cyan text-cyber-cyan' :
-                            idx === 1 ? 'bg-cyber-green/20 border-cyber-green text-cyber-green' :
-                            idx === 2 ? 'bg-cyber-amber/20 border-cyber-amber text-cyber-amber' :
-                            'bg-slate-900 border-slate-700 text-slate-400'
-                          }`}>
-                            {idx + 1}
-                          </span>
-                          <span className="font-bold text-slate-200">{item.gamer.name}</span>
-                          <span className="text-slate-500 text-[10px]">(ID: {item.gamer.employee_id})</span>
+                    return (
+                      <div key={item.gamer.id} className="space-y-1">
+                        <div className="flex justify-between items-center font-mono text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold border ${
+                              idx === 0 ? 'bg-cyber-cyan/20 border-cyber-cyan text-cyber-cyan' :
+                              idx === 1 ? 'bg-cyber-green/20 border-cyber-green text-cyber-green' :
+                              idx === 2 ? 'bg-cyber-amber/20 border-cyber-amber text-cyber-amber' :
+                              'bg-slate-900 border-slate-700 text-slate-400'
+                            }`}>
+                              {idx + 1}
+                            </span>
+                            <span className="font-bold text-slate-200">{item.gamer.name}</span>
+                          </div>
+                          <span className="text-cyber-green font-bold">{item.farmed}M Farmed</span>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-slate-400">{item.farmed}M Farmed</span>
-                          <span className="text-cyber-green font-bold">K{item.earnings}</span>
+                        <div className="w-full bg-slate-950/80 h-3 rounded border border-cyber-border/40 overflow-hidden relative">
+                          <div 
+                            className={`h-full transition-all duration-1000 ease-out ${
+                              idx === 0 ? 'bg-cyber-cyan' :
+                              idx === 1 ? 'bg-cyber-green' :
+                              'bg-slate-700'
+                            }`} 
+                            style={{ width: `${widthPercent}%` }}
+                          ></div>
                         </div>
                       </div>
-                      <div className="w-full bg-slate-950/80 h-3 rounded border border-cyber-border/40 overflow-hidden relative">
-                        <div 
-                          className={`h-full transition-all duration-1000 ease-out ${
-                            idx === 0 ? 'bg-cyber-cyan' :
-                            idx === 1 ? 'bg-cyber-green' :
-                            'bg-slate-700'
-                          }`} 
-                          style={{ width: `${widthPercent}%` }}
-                        ></div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Teams Leaderboard */}
+            <div>
+              <h3 className="font-mono font-bold text-sm text-slate-300 uppercase tracking-widest border-b border-cyber-border/40 pb-2 mb-4 flex justify-between items-center">
+                <span>Best Performing Teams</span>
+                <span className="text-[10px] text-slate-500 font-normal">Group Totals</span>
+              </h3>
+
+              {teamFarmedStats.length === 0 ? (
+                <div className="h-48 flex items-center justify-center font-mono text-slate-500 text-xs">
+                  NO ACTIVE TEAM VOLUME DETECTED
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {teamFarmedStats.map((item, idx) => {
+                    const maxTeamFarmed = Math.max(...teamFarmedStats.map(t => t.totalAssetsFarmed)) || 1;
+                    const widthPercent = Math.max(15, Math.round((item.totalAssetsFarmed / maxTeamFarmed) * 100));
+
+                    return (
+                      <div key={item.leaderId} className="space-y-1">
+                        <div className="flex justify-between items-center font-mono text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold border ${
+                              idx === 0 ? 'bg-cyber-cyan/20 border-cyber-cyan text-cyber-cyan' :
+                              idx === 1 ? 'bg-cyber-green/20 border-cyber-green text-cyber-green' :
+                              idx === 2 ? 'bg-cyber-amber/20 border-cyber-amber text-cyber-amber' :
+                              'bg-slate-900 border-slate-700 text-slate-400'
+                            }`}>
+                              {idx + 1}
+                            </span>
+                            <span className="font-bold text-slate-200">Team {item.leaderName.split(' ')[0]}</span>
+                          </div>
+                          <span className="text-cyber-cyan font-bold">{item.totalAssetsFarmed}M Farmed</span>
+                        </div>
+                        <div className="w-full bg-slate-950/80 h-3 rounded border border-cyber-border/40 overflow-hidden relative">
+                          <div 
+                            className={`h-full transition-all duration-1000 ease-out ${
+                              idx === 0 ? 'bg-cyber-cyan' :
+                              idx === 1 ? 'bg-cyber-green' :
+                              'bg-slate-700'
+                            }`} 
+                            style={{ width: `${widthPercent}%` }}
+                          ></div>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
           </div>
         )}
       </div>
+
+      {/* Team Leader Managed Team Panel */}
+      {role === 'gamer' && gamerProfile?.gamer_role === 'team_leader' && (
+        <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 mt-6">
+          <h3 className="font-mono font-bold text-sm text-slate-300 uppercase tracking-widest border-b border-cyber-border/40 pb-2 mb-4 flex justify-between items-center">
+            <span>My Managed Team Matrix</span>
+            <span className="text-xs text-cyber-cyan font-normal uppercase">Cycle: {selectedCycle}</span>
+          </h3>
+          {(() => {
+            const myTeamSummary = teamSummaries.find(t => t.leaderId === gamerProfile.id);
+            if (!myTeamSummary) return <div className="text-slate-500 font-mono text-xs uppercase">No team assigned.</div>;
+            
+            return (
+              <div className="space-y-4 font-mono text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30">
+                    <div className="text-[8px] text-slate-500 uppercase tracking-widest">Active Members</div>
+                    <div className="text-lg font-bold text-slate-200 mt-1">{myTeamSummary.memberCount} Operators</div>
+                  </div>
+                  <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30">
+                    <div className="text-[8px] text-slate-500 uppercase tracking-widest text-cyber-green">Team Total Farmed</div>
+                    <div className="text-lg font-bold text-cyber-green mt-1">{myTeamSummary.totalAssetsFarmed}M Coins</div>
+                  </div>
+                  <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30">
+                    <div className="text-[8px] text-slate-500 uppercase tracking-widest text-cyber-cyan">Team Total Payout</div>
+                    <div className="text-lg font-bold text-cyber-cyan mt-1">K{myTeamSummary.totalPayout.toLocaleString()}</div>
+                  </div>
+                </div>
+                
+                <div className="overflow-x-auto border border-cyber-border/30 rounded">
+                  <table className="w-full text-left border-collapse text-[10px] bg-slate-950/20">
+                    <thead>
+                      <tr className="border-b border-cyber-border/45 text-slate-500 uppercase bg-slate-950/60">
+                        <th className="py-2.5 px-3">Member Name</th>
+                        <th className="py-2.5 px-3">Clearance ID</th>
+                        <th className="py-2.5 px-3 text-right">Farmed Assets</th>
+                        <th className="py-2.5 px-3 text-right text-cyber-green">Payout</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-cyber-border/20 text-slate-300">
+                      {myTeamSummary.gamerDetails.map(member => (
+                        <tr key={member.gamerId} className="hover:bg-slate-900/40 transition-all">
+                          <td className="py-2.5 px-3 font-bold">{member.gamerName} {member.gamerId === gamerProfile.id && "(You)"}</td>
+                          <td className="py-2.5 px-3 text-slate-400 font-mono">{member.employeeId}</td>
+                          <td className="py-2.5 px-3 text-right font-bold">{member.assetsFarmed}M</td>
+                          <td className="py-2.5 px-3 text-right font-bold text-cyber-green">K{member.payout.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {/* Bottom Row: Active/Recent Orders Queue */}
       <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40">

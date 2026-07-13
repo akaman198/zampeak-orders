@@ -1,5 +1,8 @@
 export type OrderStatus = 'Running' | 'Paused' | 'Completed' | 'Cancelled' | 'Violation';
 export type AssetType = 'Haval Coins' | 'Total Assets';
+export type GamerLevel = 'beginner' | 'intermediate' | 'advanced';
+export type GamerRole = 'gamer' | 'team_leader' | 'technical_manager';
+export type AttendanceStatus = 'present_on_time' | 'present_late' | 'absent';
 
 export interface Gamer {
   id: string;
@@ -9,6 +12,17 @@ export interface Gamer {
   default_password?: string;
   phone?: string;
   status: 'active' | 'inactive';
+  level: GamerLevel;
+  gamer_role: GamerRole;
+  team_leader_id: string | null;
+  created_at: string;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  gamer_id: string;
+  date: string; // YYYY-MM-DD
+  status: AttendanceStatus;
   created_at: string;
 }
 
@@ -49,4 +63,41 @@ export interface DashboardStats {
   averageOrderSize: number;
   violationRate: number;
   recentOrders: Order[];
+}
+
+export interface PayrollSummary {
+  gamerId: string;
+  gamerName: string;
+  employeeId: string;
+  gamerRole: GamerRole;
+  level: GamerLevel;
+  baseSalary: number; // K1200, K1800, K2500, K4500
+  dailyRate: number;
+  daysWorked: number;
+  daysAbsent: number;
+  onTimeDays: number;
+  basePayEarned: number;
+  deductions: number;
+  lateDeduction: number;
+  attendanceBonus: number;
+  orderBonus: number;
+  teamVolumeBonus: number;
+  totalPay: number;
+}
+
+export interface TeamSummary {
+  leaderId: string;
+  leaderName: string;
+  gamer_role: GamerRole;
+  level: GamerLevel;
+  memberCount: number;
+  totalAssetsFarmed: number;
+  totalPayout: number;
+  gamerDetails: {
+    gamerId: string;
+    gamerName: string;
+    employeeId: string;
+    assetsFarmed: number;
+    payout: number;
+  }[];
 }

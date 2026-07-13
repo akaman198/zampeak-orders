@@ -1,7 +1,17 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Gamer, Order, OrderStatus, AssetType } from '../types';
+import { 
+  Gamer, 
+  Order, 
+  OrderStatus, 
+  AssetType, 
+  GamerLevel, 
+  GamerRole, 
+  AttendanceStatus, 
+  AttendanceRecord, 
+  PayrollSummary 
+} from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
 
@@ -11,6 +21,7 @@ interface AppContextType {
   gamerProfile: Gamer | null;
   gamers: Gamer[];
   orders: Order[];
+  attendance: AttendanceRecord[];
   loading: boolean;
   authLoading: boolean;
   isDemo: boolean;
@@ -18,11 +29,22 @@ interface AppContextType {
   signUp: (emailOrEmpId: string, password: string, defaultPassword?: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   updatePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
-  addGamer: (name: string, employeeId: string, defaultPassword: string, phone?: string) => Promise<{ success: boolean; error?: string }>;
+  addGamer: (
+    name: string,
+    employeeId: string,
+    defaultPassword: string,
+    level: GamerLevel,
+    gamerRole: GamerRole,
+    teamLeaderId: string | null,
+    phone?: string
+  ) => Promise<{ success: boolean; error?: string }>;
   updateGamer: (
     id: string,
     name: string,
     employeeId: string,
+    level: GamerLevel,
+    gamerRole: GamerRole,
+    teamLeaderId: string | null,
     defaultPassword?: string,
     phone?: string,
     status?: 'active' | 'inactive'
@@ -50,7 +72,9 @@ interface AppContextType {
   ) => Promise<{ success: boolean; error?: string }>;
   deleteOrder: (id: string) => Promise<{ success: boolean; error?: string }>;
   updateOrderStatus: (id: string, status: OrderStatus) => Promise<{ success: boolean; error?: string }>;
-  importBackupData: (gamers: Gamer[], orders: Order[]) => Promise<{ success: boolean; error?: string }>;
+  saveAttendance: (gamerId: string, date: string, status: AttendanceStatus) => Promise<{ success: boolean; error?: string }>;
+  calculatePayroll: (gamerId: string, cycleLabel: string) => PayrollSummary;
+  importBackupData: (gamers: Gamer[], orders: Order[], attendance?: AttendanceRecord[]) => Promise<{ success: boolean; error?: string }>;
   refreshData: () => Promise<void>;
 }
 
@@ -64,12 +88,36 @@ const getEmailFromInput = (input: string): string => {
   return `${trimmed.toLowerCase()}@gamers.zampeak.com`;
 };
 
+export const getPayPeriodLabel = (dateStr: string) => {
+  if (!dateStr) return '';
+  const normalizedStr = dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`;
+  const date = new Date(normalizedStr);
+  let year = date.getFullYear();
+  let month = date.getMonth(); // 0-indexed
+  const day = date.getDate();
+
+  if (day >= 15) {
+    month += 1;
+    if (month > 11) {
+      month = 0;
+      year += 1;
+    }
+  }
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  return `${monthNames[month]} 15, ${year}`;
+};
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<'admin' | 'gamer'>('admin');
   const [gamerProfile, setGamerProfile] = useState<Gamer | null>(null);
   const [gamers, setGamers] = useState<Gamer[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [isDemo, setIsDemo] = useState(!isSupabaseConfigured);
@@ -126,6 +174,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       setGamers([]);
       setOrders([]);
+      setAttendance([]);
       setRole('admin');
       setGamerProfile(null);
     }
@@ -159,13 +208,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
           .select('*')
           .order('created_at', { ascending: false });
 
-        if (gamersErr || ordersErr) {
-          console.error('Database read error:', gamersErr?.message || ordersErr?.message);
+        const { data: attendanceData, error: attendanceErr } = await supabase
+          .from('attendance')
+          .select('*')
+          .order('date', { ascending: false });
+
+        if (gamersErr || ordersErr || attendanceErr) {
+          console.error('Database read error:', gamersErr?.message || ordersErr?.message || attendanceErr?.message);
           setIsDemo(true);
           loadLocalStorage();
         } else {
           setGamers(gamersData || []);
           setOrders(ordersData || []);
+          setAttendance(attendanceData || []);
         }
       } catch (err) {
         console.error('Failed to load from Supabase, falling back to local storage:', err);
@@ -181,15 +236,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const loadLocalStorage = () => {
     const savedGamers = localStorage.getItem('zampeak_gamers');
     const savedOrders = localStorage.getItem('zampeak_orders');
+    const savedAttendance = localStorage.getItem('zampeak_attendance');
 
     if (savedGamers && savedOrders) {
       setGamers(JSON.parse(savedGamers));
       setOrders(JSON.parse(savedOrders));
+      setAttendance(savedAttendance ? JSON.parse(savedAttendance) : []);
     } else {
       setGamers([]);
       setOrders([]);
+      setAttendance([]);
       localStorage.setItem('zampeak_gamers', JSON.stringify([]));
       localStorage.setItem('zampeak_orders', JSON.stringify([]));
+      localStorage.setItem('zampeak_attendance', JSON.stringify([]));
     }
   };
 
@@ -381,7 +440,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   // Gamers operations
-  const addGamer = async (name: string, employeeId: string, defaultPassword: string, phone?: string) => {
+  const addGamer = async (
+    name: string, 
+    employeeId: string, 
+    defaultPassword: string, 
+    level: GamerLevel,
+    gamerRole: GamerRole,
+    teamLeaderId: string | null,
+    phone?: string
+  ) => {
     if (!isDemo) {
       try {
         const response = await fetch('/api/create-gamer', {
@@ -389,7 +456,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ name, employeeId, defaultPassword, phone }),
+          body: JSON.stringify({ 
+            name, 
+            employeeId, 
+            defaultPassword, 
+            phone,
+            level,
+            gamer_role: gamerRole,
+            team_leader_id: teamLeaderId
+          }),
         });
 
         const data = await response.json();
@@ -414,6 +489,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         default_password: defaultPassword,
         phone: phone || '',
         status: 'active',
+        level,
+        gamer_role: gamerRole,
+        team_leader_id: teamLeaderId,
         created_at: new Date().toISOString(),
       };
       const updated = [newGamer, ...gamers];
@@ -427,6 +505,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     id: string,
     name: string,
     employeeId: string,
+    level: GamerLevel,
+    gamerRole: GamerRole,
+    teamLeaderId: string | null,
     defaultPassword?: string,
     phone?: string,
     status?: 'active' | 'inactive'
@@ -440,6 +521,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           name, 
           employee_id: cleanEmpId, 
           email: syntheticEmail,
+          level,
+          gamer_role: gamerRole,
+          team_leader_id: teamLeaderId,
           phone: phone || '' 
         };
         if (defaultPassword) updates.default_password = defaultPassword;
@@ -466,7 +550,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
               email: syntheticEmail,
               default_password: defaultPassword || g.default_password,
               phone: phone || '', 
-              status: status || g.status 
+              status: status || g.status,
+              level,
+              gamer_role: gamerRole,
+              team_leader_id: teamLeaderId
             }
           : g
       );
@@ -652,7 +739,179 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const importBackupData = async (newGamers: Gamer[], newOrders: Order[]) => {
+  const saveAttendance = async (gamerId: string, date: string, status: AttendanceStatus) => {
+    const newRecord: AttendanceRecord = {
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11),
+      gamer_id: gamerId,
+      date,
+      status,
+      created_at: new Date().toISOString(),
+    };
+
+    if (!isDemo && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('attendance')
+          .upsert({
+            gamer_id: gamerId,
+            date,
+            status,
+            created_at: new Date().toISOString()
+          }, { onConflict: 'gamer_id,date' })
+          .select();
+
+        if (error) throw error;
+        
+        setAttendance((prev) => {
+          const filtered = prev.filter((a) => !(a.gamer_id === gamerId && a.date === date));
+          const upserted = data && data[0] ? data[0] as AttendanceRecord : newRecord;
+          const updated = [upserted, ...filtered];
+          return updated;
+        });
+
+        return { success: true };
+      } catch (err: any) {
+        console.error('Supabase attendance save error:', err);
+        return { success: false, error: err.message };
+      }
+    } else {
+      setAttendance((prev) => {
+        const filtered = prev.filter((a) => !(a.gamer_id === gamerId && a.date === date));
+        const updated = [newRecord, ...filtered];
+        localStorage.setItem('zampeak_attendance', JSON.stringify(updated));
+        return updated;
+      });
+      return { success: true };
+    }
+  };
+
+  const calculatePayroll = (gamerId: string, cycleLabel: string): PayrollSummary => {
+    const gamer = gamers.find((g) => g.id === gamerId);
+    
+    // Default empty payroll
+    const emptyPayroll: PayrollSummary = {
+      gamerId,
+      gamerName: gamer?.name || 'Unknown',
+      employeeId: gamer?.employee_id || 'N/A',
+      gamerRole: gamer?.gamer_role || 'gamer',
+      level: gamer?.level || 'beginner',
+      baseSalary: 0,
+      dailyRate: 0,
+      daysWorked: 0,
+      daysAbsent: 0,
+      onTimeDays: 0,
+      basePayEarned: 0,
+      deductions: 0,
+      lateDeduction: 0,
+      attendanceBonus: 0,
+      orderBonus: 0,
+      teamVolumeBonus: 0,
+      totalPay: 0,
+    };
+
+    if (!gamer) return emptyPayroll;
+
+    // 1. Determine Base Salary
+    let baseSalary = 1200;
+    if (gamer.gamer_role === 'technical_manager') {
+      baseSalary = 4500;
+    } else {
+      if (gamer.level === 'intermediate') baseSalary = 1800;
+      else if (gamer.level === 'advanced') baseSalary = 2500;
+    }
+
+    const dailyRate = baseSalary / 26;
+
+    // 2. Filter Attendance in Cycle
+    const cycleAttendance = attendance.filter(
+      (a) => a.gamer_id === gamerId && getPayPeriodLabel(a.date) === cycleLabel
+    );
+
+    const daysWorked = cycleAttendance.filter(
+      (a) => a.status === 'present_on_time' || a.status === 'present_late'
+    ).length;
+    
+    const daysAbsent = cycleAttendance.filter((a) => a.status === 'absent').length;
+    const onTimeDays = cycleAttendance.filter((a) => a.status === 'present_on_time').length;
+
+    // 3. Base Pay Earned & Deductions (capped at 26 working days)
+    const presentDaysForBase = Math.min(26, daysWorked);
+    const basePayEarned = presentDaysForBase * dailyRate;
+    
+    // Late deductions: K20 per late day
+    const lateDays = cycleAttendance.filter((a) => a.status === 'present_late').length;
+    const lateDeduction = lateDays * 20;
+    
+    const missedDaysDeductions = Math.max(0, baseSalary - basePayEarned);
+    const deductions = missedDaysDeductions + lateDeduction;
+
+    // 4. Attendance Bonus: K200 if 26 days on time
+    const attendanceBonus = onTimeDays >= 26 ? 200 : 0;
+
+    // 5. Order payout bonuses
+    const completedOrders = orders.filter(
+      (o) => o.gamer_id === gamerId && o.status === 'Completed' && getPayPeriodLabel(o.start_date) === cycleLabel
+    );
+    const orderBonus = completedOrders.reduce((sum, o) => sum + o.payout, 0);
+
+    // 6. Team Leader Daily Volume Bonus
+    let teamVolumeBonus = 0;
+    if (gamer.gamer_role === 'team_leader') {
+      const teamMembers = gamers.filter((g) => g.team_leader_id === gamerId);
+      const teamGamerIds = [gamerId, ...teamMembers.map((m) => m.id)];
+
+      // Find completed orders for this cycle by team members or leader
+      const teamOrders = orders.filter(
+        (o) => o.status === 'Completed' && teamGamerIds.includes(o.gamer_id) && getPayPeriodLabel(o.start_date) === cycleLabel
+      );
+
+      // Group by daily local date string
+      const dailyTotals: { [dateStr: string]: number } = {};
+      teamOrders.forEach((o) => {
+        const d = new Date(o.start_date);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const dateStr = `${yyyy}-${mm}-${dd}`;
+        dailyTotals[dateStr] = (dailyTotals[dateStr] || 0) + Number(o.size_millions);
+      });
+
+      // Calculate bonuses: K10 for every 10 Million above 50 Million
+      Object.values(dailyTotals).forEach((total) => {
+        if (total > 50) {
+          const over = total - 50;
+          const tens = Math.floor(over / 10);
+          if (tens > 0) {
+            teamVolumeBonus += tens * 10;
+          }
+        }
+      });
+    }
+
+    const totalPay = Number(Math.max(0, basePayEarned - lateDeduction + attendanceBonus + orderBonus + teamVolumeBonus).toFixed(2));
+
+    return {
+      gamerId,
+      gamerName: gamer.name,
+      employeeId: gamer.employee_id,
+      gamerRole: gamer.gamer_role,
+      level: gamer.level,
+      baseSalary,
+      dailyRate,
+      daysWorked,
+      daysAbsent,
+      onTimeDays,
+      basePayEarned,
+      deductions,
+      lateDeduction,
+      attendanceBonus,
+      orderBonus,
+      teamVolumeBonus,
+      totalPay,
+    };
+  };
+
+  const importBackupData = async (newGamers: Gamer[], newOrders: Order[], newAttendance?: AttendanceRecord[]) => {
     if (!isDemo && supabase) {
       try {
         for (const g of newGamers) {
@@ -663,6 +922,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const { error } = await supabase.from('orders').upsert(o);
           if (error) throw error;
         }
+        if (newAttendance) {
+          for (const a of newAttendance) {
+            const { error } = await supabase.from('attendance').upsert(a);
+            if (error) throw error;
+          }
+        }
         await loadData();
         return { success: true };
       } catch (err: any) {
@@ -672,8 +937,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       setGamers(newGamers);
       setOrders(newOrders);
+      setAttendance(newAttendance || []);
       localStorage.setItem('zampeak_gamers', JSON.stringify(newGamers));
       localStorage.setItem('zampeak_orders', JSON.stringify(newOrders));
+      localStorage.setItem('zampeak_attendance', JSON.stringify(newAttendance || []));
       return { success: true };
     }
   };
@@ -686,6 +953,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         gamerProfile,
         gamers,
         orders,
+        attendance,
         loading,
         authLoading,
         isDemo,
@@ -701,6 +969,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updateOrder,
         deleteOrder,
         updateOrderStatus,
+        saveAttendance,
+        calculatePayroll,
         importBackupData,
         refreshData,
       }}

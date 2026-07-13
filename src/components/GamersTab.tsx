@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Gamer } from '../types';
+import { Gamer, GamerLevel, GamerRole } from '../types';
 import { 
   UserPlus, 
   Phone, 
@@ -29,6 +29,9 @@ export default function GamersTab() {
   const [defaultPassword, setDefaultPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [status, setStatus] = useState<'active' | 'inactive'>('active');
+  const [level, setLevel] = useState<GamerLevel>('beginner');
+  const [gamerRole, setGamerRole] = useState<GamerRole>('gamer');
+  const [teamLeaderId, setTeamLeaderId] = useState<string>('');
   const [formError, setFormError] = useState('');
 
   // Reset fields
@@ -38,6 +41,9 @@ export default function GamersTab() {
     setDefaultPassword('');
     setPhone('');
     setStatus('active');
+    setLevel('beginner');
+    setGamerRole('gamer');
+    setTeamLeaderId('');
     setFormError('');
   };
 
@@ -52,7 +58,15 @@ export default function GamersTab() {
       return;
     }
 
-    const res = await addGamer(name.trim(), employeeId.trim(), defaultPassword.trim(), phone.trim());
+    const res = await addGamer(
+      name.trim(), 
+      employeeId.trim(), 
+      defaultPassword.trim(), 
+      level, 
+      gamerRole, 
+      teamLeaderId || null, 
+      phone.trim()
+    );
     if (res.success) {
       setIsAdding(false);
       resetForm();
@@ -73,6 +87,9 @@ export default function GamersTab() {
       isEditing.id,
       name.trim(),
       employeeId.trim(),
+      level,
+      gamerRole,
+      teamLeaderId || null,
       defaultPassword.trim() || undefined,
       phone.trim(),
       status
@@ -85,7 +102,10 @@ export default function GamersTab() {
           employee_id: employeeId, 
           default_password: defaultPassword.trim() || selectedGamer.default_password,
           phone, 
-          status 
+          status,
+          level,
+          gamer_role: gamerRole,
+          team_leader_id: teamLeaderId || null
         });
       }
       setIsEditing(null);
@@ -130,6 +150,9 @@ export default function GamersTab() {
     setDefaultPassword(''); // leave blank to keep unchanged
     setPhone(gamer.phone || '');
     setStatus(gamer.status);
+    setLevel(gamer.level || 'beginner');
+    setGamerRole(gamer.gamer_role || 'gamer');
+    setTeamLeaderId(gamer.team_leader_id || '');
     setFormError('');
   };
 
@@ -192,6 +215,16 @@ export default function GamersTab() {
               const metrics = getGamerProfileMetrics(gamer.id);
               const isSelected = selectedGamer?.id === gamer.id;
 
+              let roleBadgeColor = 'text-slate-500 bg-slate-950 border-slate-800';
+              let roleText = 'GAMER';
+              if (gamer.gamer_role === 'technical_manager') {
+                roleBadgeColor = 'text-cyber-red bg-cyber-red/10 border-cyber-red/20';
+                roleText = 'TECH MGR';
+              } else if (gamer.gamer_role === 'team_leader') {
+                roleBadgeColor = 'text-cyber-amber bg-cyber-amber/10 border-cyber-amber/20';
+                roleText = 'TEAM LDR';
+              }
+
               return (
                 <div 
                   key={gamer.id}
@@ -208,7 +241,12 @@ export default function GamersTab() {
                         <span className={`h-1.5 w-1.5 rounded-full ${gamer.status === 'active' ? 'bg-cyber-green animate-pulse' : 'bg-slate-500'}`}></span>
                         <span className={gamer.status === 'active' ? 'text-slate-200' : 'text-slate-500'}>{gamer.name}</span>
                       </div>
-                      <div className="text-[10px] text-cyber-cyan/80 mt-0.5">ID: {gamer.employee_id}</div>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className="text-[9px] text-cyber-cyan/80 font-bold">ID: {gamer.employee_id}</span>
+                        <span className={`px-1.5 py-0.2 rounded border text-[8px] font-bold ${roleBadgeColor}`}>
+                          {roleText}
+                        </span>
+                      </div>
                     </div>
                     <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
                       gamer.status === 'active' ? 'bg-cyber-green/10 text-cyber-green border border-cyber-green/20' : 'bg-slate-800 text-slate-500 border border-slate-700'
@@ -306,6 +344,62 @@ export default function GamersTab() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-slate-400 uppercase tracking-wider">Operator Role</label>
+                  <select 
+                    value={gamerRole} 
+                    onChange={(e) => {
+                      const newRole = e.target.value as GamerRole;
+                      setGamerRole(newRole);
+                      if (newRole !== 'gamer') setTeamLeaderId('');
+                    }}
+                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer text-xs"
+                  >
+                    <option value="gamer">Gamer (Operator)</option>
+                    <option value="team_leader">Team Leader</option>
+                    <option value="technical_manager">Technical Manager</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-slate-400 uppercase tracking-wider">Clearance Level</label>
+                  <select 
+                    value={level} 
+                    onChange={(e) => setLevel(e.target.value as GamerLevel)}
+                    disabled={gamerRole === 'technical_manager'}
+                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer disabled:opacity-40 text-xs"
+                  >
+                    <option value="beginner">Beginner (Base K1,200)</option>
+                    <option value="intermediate">Intermediate (Base K1,800)</option>
+                    <option value="advanced">Advanced (Base K2,500)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-slate-400 uppercase tracking-wider">Assigned Team Leader</label>
+                  <select 
+                    value={teamLeaderId} 
+                    onChange={(e) => setTeamLeaderId(e.target.value)}
+                    disabled={gamerRole !== 'gamer'}
+                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer disabled:opacity-40 text-xs"
+                  >
+                    <option value="">No Team Leader</option>
+                    {gamers
+                      .filter(g => g.gamer_role === 'team_leader' && g.status === 'active' && g.id !== (isEditing?.id || ''))
+                      .map(tl => {
+                        const teamSize = gamers.filter(g => g.team_leader_id === tl.id && g.status === 'active').length;
+                        return (
+                          <option key={tl.id} value={tl.id}>
+                            {tl.name} ({teamSize}/5 gamers)
+                          </option>
+                        );
+                      })
+                    }
+                  </select>
+                </div>
+              </div>
+
               <div className="flex justify-end gap-3 pt-3">
                 <button 
                   type="button"
@@ -392,10 +486,66 @@ export default function GamersTab() {
                   <select 
                     value={status} 
                     onChange={(e) => setStatus(e.target.value as 'active' | 'inactive')}
-                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer"
+                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer text-xs"
                   >
                     <option value="active">Active (On Duty)</option>
                     <option value="inactive">Inactive (Suspended)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-slate-400 uppercase tracking-wider">Operator Role</label>
+                  <select 
+                    value={gamerRole} 
+                    onChange={(e) => {
+                      const newRole = e.target.value as GamerRole;
+                      setGamerRole(newRole);
+                      if (newRole !== 'gamer') setTeamLeaderId('');
+                    }}
+                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer text-xs"
+                  >
+                    <option value="gamer">Gamer (Operator)</option>
+                    <option value="team_leader">Team Leader</option>
+                    <option value="technical_manager">Technical Manager</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-slate-400 uppercase tracking-wider">Clearance Level</label>
+                  <select 
+                    value={level} 
+                    onChange={(e) => setLevel(e.target.value as GamerLevel)}
+                    disabled={gamerRole === 'technical_manager'}
+                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer disabled:opacity-40 text-xs"
+                  >
+                    <option value="beginner">Beginner (Base K1,200)</option>
+                    <option value="intermediate">Intermediate (Base K1,800)</option>
+                    <option value="advanced">Advanced (Base K2,500)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-slate-400 uppercase tracking-wider">Assigned Team Leader</label>
+                  <select 
+                    value={teamLeaderId} 
+                    onChange={(e) => setTeamLeaderId(e.target.value)}
+                    disabled={gamerRole !== 'gamer'}
+                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer disabled:opacity-40 text-xs"
+                  >
+                    <option value="">No Team Leader</option>
+                    {gamers
+                      .filter(g => g.gamer_role === 'team_leader' && g.status === 'active' && g.id !== (isEditing?.id || ''))
+                      .map(tl => {
+                        const teamSize = gamers.filter(g => g.team_leader_id === tl.id && g.status === 'active').length;
+                        return (
+                          <option key={tl.id} value={tl.id}>
+                            {tl.name} ({teamSize}/5 gamers)
+                          </option>
+                        );
+                      })
+                    }
                   </select>
                 </div>
               </div>
@@ -432,6 +582,15 @@ export default function GamersTab() {
                   </h3>
                   <div className="font-mono text-xs text-cyber-cyan mt-1.5 flex flex-wrap gap-x-6 gap-y-2">
                     <span>EMPLOYEE ID: {selectedGamer.employee_id}</span>
+                    <span className="uppercase text-slate-300">ROLE: {selectedGamer.gamer_role?.replace('_', ' ') || 'GAMER'}</span>
+                    {selectedGamer.gamer_role !== 'technical_manager' && (
+                      <span className="uppercase text-slate-300">LEVEL: {selectedGamer.level || 'beginner'}</span>
+                    )}
+                    {selectedGamer.gamer_role === 'gamer' && selectedGamer.team_leader_id && (
+                      <span className="uppercase text-slate-300">
+                        TEAM LEADER: {gamers.find(g => g.id === selectedGamer.team_leader_id)?.name || 'Unknown'}
+                      </span>
+                    )}
                     
                     {/* Default Password / Roster Status Display */}
                     {selectedGamer.default_password ? (
@@ -498,6 +657,27 @@ export default function GamersTab() {
                         <div className="text-xl font-bold text-cyber-cyan mt-1">K{metrics.expectedPay}</div>
                       </div>
                     </div>
+
+                    {/* Team Members List (For Team Leaders) */}
+                    {selectedGamer.gamer_role === 'team_leader' && (
+                      <div className="mt-4 p-4 border border-cyber-border/40 bg-slate-950/60 rounded">
+                        <h4 className="font-mono font-bold text-xs uppercase tracking-wider text-cyber-cyan mb-2">
+                          Team Members Managed ({gamers.filter(g => g.team_leader_id === selectedGamer.id && g.status === 'active').length}/5 active)
+                        </h4>
+                        {gamers.filter(g => g.team_leader_id === selectedGamer.id).length === 0 ? (
+                          <div className="text-[10px] text-slate-500 uppercase">No team members assigned to this Leader yet.</div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px]">
+                            {gamers.filter(g => g.team_leader_id === selectedGamer.id).map(member => (
+                              <div key={member.id} className="flex justify-between p-2 rounded border border-cyber-border/20 bg-slate-900/40">
+                                <span className="font-bold text-slate-300">{member.name}</span>
+                                <span className="text-slate-500 font-mono">ID: {member.employee_id} ({member.status})</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Mission History */}
                     <div>

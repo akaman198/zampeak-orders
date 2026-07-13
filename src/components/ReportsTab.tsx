@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp, getPayPeriodLabel } from '../context/AppContext';
 import { 
   FileSpreadsheet, 
   Printer, 
@@ -13,10 +13,9 @@ import {
   Copy,
   Check
 } from 'lucide-react';
-import { GamerPerformance } from '../types';
 
 export default function ReportsTab() {
-  const { gamers, orders, importBackupData, isDemo } = useApp();
+  const { gamers, orders, attendance, importBackupData, isDemo, calculatePayroll } = useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // States
@@ -24,53 +23,119 @@ export default function ReportsTab() {
   const [copiedEnv, setCopiedEnv] = useState(false);
   const [importStatus, setImportStatus] = useState<{ success: boolean; message: string } | null>(null);
 
-  // 1. Calculations for Report
-  const gamerPerformances: GamerPerformance[] = gamers.map(gamer => {
-    const gamerOrders = orders.filter(o => o.gamer_id === gamer.id);
-    const completed = gamerOrders.filter(o => o.status === 'Completed');
-    const running = gamerOrders.filter(o => o.status === 'Running').length;
-    const paused = gamerOrders.filter(o => o.status === 'Paused').length;
-    const cancelled = gamerOrders.filter(o => o.status === 'Cancelled').length;
-    const violation = gamerOrders.filter(o => o.status === 'Violation').length;
+  // Generate list of cycles
+  const getAvailablePayCycles = () => {
+    const cyclesSet = new Set<string>();
+    
+    // Always include current month and next month's cycles as upcoming options
+    const now = new Date();
+    cyclesSet.add(getPayPeriodLabel(now.toISOString()));
+    
+    // Add next month cycle
+    const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 15);
+    cyclesSet.add(getPayPeriodLabel(nextMonthDate.toISOString()));
 
-    const totalAssetsFarmed = completed.reduce((sum, o) => sum + o.size_millions, 0);
-    const totalPayoutExpected = completed.reduce((sum, o) => sum + o.payout, 0);
+    // Add cycles from completed orders
+    orders.forEach(o => {
+      if (o.status === 'Completed') {
+        cyclesSet.add(getPayPeriodLabel(o.start_date));
+      }
+    });
 
-    const total = gamerOrders.length;
-    const completionRate = total > 0 ? Math.round((completed.length / total) * 100) : 0;
-    const violationRate = total > 0 ? Math.round((violation / total) * 100) : 0;
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return Array.from(cyclesSet).sort((a, b) => {
+      const parseDate = (label: string) => {
+        const parts = label.replace(',', '').split(' '); // e.g. ["July", "15", "2026"]
+        const m = monthNames.indexOf(parts[0]);
+        const d = parseInt(parts[1]);
+        const y = parseInt(parts[2]);
+        return new Date(y, m, d).getTime();
+      };
+      return parseDate(b) - parseDate(a); // descending order
+    });
+  };
 
-    return {
-      gamer,
-      totalOrders: total,
-      completedOrders: completed.length,
-      runningOrders: running,
-      pausedOrders: paused,
-      cancelledOrders: cancelled,
-      violationOrders: violation,
-      totalAssetsFarmed,
-      totalPayoutExpected,
-      completionRate,
-      violationRate
-    };
-  });
+  const getCycleRangeLabel = (cycleLabel: string) => {
+    if (!cycleLabel) return '';
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const parts = cycleLabel.replace(',', '').split(' '); // e.g. ["July", "15", "2026"]
+    const monthIndex = monthNames.indexOf(parts[0]);
+    const year = parseInt(parts[2]);
+
+    // Prev month index
+    let prevMonthIndex = monthIndex - 1;
+    let prevYear = year;
+    if (prevMonthIndex < 0) {
+      prevMonthIndex = 11;
+      prevYear -= 1;
+    }
+
+    return `Cycle period: ${monthNames[prevMonthIndex]} 15, ${prevYear} to ${parts[0]} 14, ${year}`;
+  };
+
+  const availableCycles = getAvailablePayCycles();
+  const currentMonthCycle = getPayPeriodLabel(new Date().toISOString());
+  const [selectedCycle, setSelectedCycle] = useState(
+    availableCycles.includes(currentMonthCycle) ? currentMonthCycle : (availableCycles[0] || '')
+  );
+
+  // 1. Calculations for Report (for the selected cycle)
+  const activeOperators = gamers.filter(g => g.status === 'active');
+  const payrollSummaries = activeOperators.map(g => calculatePayroll(g.id, selectedCycle));
 
   // Calculate Report Aggregates
-  const totalCompletedMissions = gamerPerformances.reduce((sum, g) => sum + g.completedOrders, 0);
-  const totalAssetsFarmedAll = gamerPerformances.reduce((sum, g) => sum + g.totalAssetsFarmed, 0);
-  const totalPayoutAll = gamerPerformances.reduce((sum, g) => sum + g.totalPayoutExpected, 0);
+  const totalBaseSalary = payrollSummaries.reduce((sum, p) => sum + p.baseSalary, 0);
+  const totalBasePayEarned = payrollSummaries.reduce((sum, p) => sum + p.basePayEarned, 0);
+  const totalDeductions = payrollSummaries.reduce((sum, p) => sum + p.deductions, 0);
+  const totalAttendanceBonus = payrollSummaries.reduce((sum, p) => sum + p.attendanceBonus, 0);
+  
+  // Completed order stats for cycle
+  const cycleOrders = orders.filter(
+    o => o.status === 'Completed' && getPayPeriodLabel(o.start_date) === selectedCycle
+  );
+  const totalCompletedMissions = cycleOrders.length;
+  const totalAssetsFarmedAll = cycleOrders.reduce((sum, o) => sum + Number(o.size_millions), 0);
+  const totalOrderPayout = cycleOrders.reduce((sum, o) => sum + Number(o.payout), 0);
+  const totalTeamVolumeBonus = payrollSummaries.reduce((sum, p) => sum + p.teamVolumeBonus, 0);
+  const totalPayAll = payrollSummaries.reduce((sum, p) => sum + p.totalPay, 0);
 
   // 2. Export functions
   const exportToCSV = () => {
-    const headers = ['Gamer Name', 'Employee ID', 'Total Deployed', 'Completed Missions', 'Violation Count', 'Total Assets/Coins Farmed (Millions)', 'Expected Payout (Kwacha K)'];
-    const rows = gamerPerformances.map(gp => [
-      gp.gamer.name,
-      gp.gamer.employee_id,
-      gp.totalOrders,
-      gp.completedOrders,
-      gp.violationOrders,
-      gp.totalAssetsFarmed,
-      gp.totalPayoutExpected
+    const headers = [
+      'Gamer Name', 
+      'Employee ID', 
+      'Role', 
+      'Level', 
+      'Days Worked', 
+      'Base Contract Salary', 
+      'Base Salary Earned', 
+      'Missed Day Deductions', 
+      'Late Penalties (K20/day)',
+      'Attendance Bonus (On-time)', 
+      'Order Bonus', 
+      'Team Volume Bonus', 
+      'Total Net Pay (Kwacha K)'
+    ];
+    const rows = payrollSummaries.map(p => [
+      p.gamerName,
+      p.employeeId,
+      p.gamerRole.replace('_', ' ').toUpperCase(),
+      p.level.toUpperCase(),
+      `${p.daysWorked}/26`,
+      p.baseSalary,
+      p.basePayEarned.toFixed(2),
+      (p.deductions - p.lateDeduction).toFixed(2),
+      p.lateDeduction.toFixed(2),
+      p.attendanceBonus,
+      p.orderBonus,
+      p.teamVolumeBonus,
+      p.totalPay
     ]);
 
     const csvContent = "data:text/csv;charset=utf-8," 
@@ -79,7 +144,7 @@ export default function ReportsTab() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `zampeak_gamer_performance_${new Date().toISOString().slice(0,10)}.csv`);
+    link.setAttribute("download", `zampeak_payroll_${selectedCycle.replace(' ', '_').replace(',', '')}_${new Date().toISOString().slice(0,10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -87,7 +152,7 @@ export default function ReportsTab() {
 
   const exportBackupJSON = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(
-      JSON.stringify({ gamers, orders }, null, 2)
+      JSON.stringify({ gamers, orders, attendance }, null, 2)
     );
     const link = document.createElement("a");
     link.setAttribute("href", dataStr);
@@ -105,9 +170,9 @@ export default function ReportsTab() {
         try {
           const parsed = JSON.parse(event.target?.result as string);
           if (parsed && Array.isArray(parsed.gamers) && Array.isArray(parsed.orders)) {
-            const res = await importBackupData(parsed.gamers, parsed.orders);
+            const res = await importBackupData(parsed.gamers, parsed.orders, parsed.attendance || []);
             if (res.success) {
-              setImportStatus({ success: true, message: 'Dossier and Order logs successfully restored!' });
+              setImportStatus({ success: true, message: 'Dossier, Order and Attendance logs successfully restored!' });
             } else {
               setImportStatus({ success: false, message: res.error || 'Import failed.' });
             }
@@ -125,7 +190,7 @@ export default function ReportsTab() {
     window.print();
   };
 
-  // SQL Schema Script to create tables in Supabase (with employee_id and asset_type)
+  // SQL Schema Script to create tables in Supabase
   const supabaseSQL = `-- 1. Create GAMERS Table
 CREATE TABLE public.gamers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -135,6 +200,9 @@ CREATE TABLE public.gamers (
     default_password TEXT,
     phone TEXT,
     status TEXT NOT NULL DEFAULT 'active',
+    level TEXT NOT NULL DEFAULT 'beginner',
+    gamer_role TEXT NOT NULL DEFAULT 'gamer',
+    team_leader_id UUID REFERENCES public.gamers(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -151,15 +219,28 @@ CREATE TABLE public.orders (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- 3. Create ATTENDANCE Table
+CREATE TABLE public.attendance (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    gamer_id UUID REFERENCES public.gamers(id) ON DELETE CASCADE NOT NULL,
+    date DATE NOT NULL,
+    status TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    UNIQUE(gamer_id, date)
+);
+
 -- Enable Row Level Security (RLS) or add your security policies as needed
 ALTER TABLE public.gamers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.attendance ENABLE ROW LEVEL SECURITY;
 
 -- Authenticated users access policy (Secure for authenticated employees/ops)
 CREATE POLICY "Allow authenticated read access" ON public.gamers FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Allow authenticated write access" ON public.gamers FOR ALL TO authenticated USING (true);
 CREATE POLICY "Allow authenticated read access" ON public.orders FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Allow authenticated write access" ON public.orders FOR ALL TO authenticated USING (true);
+CREATE POLICY "Allow authenticated read access" ON public.attendance FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated write access" ON public.attendance FOR ALL TO authenticated USING (true);
 
 -- 6. RPC Secure Registration Validator (Bypasses RLS to verify codes safely)
 CREATE OR REPLACE FUNCTION verify_gamer_registration(p_employee_id TEXT, p_default_password TEXT)
@@ -205,36 +286,51 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
     <div className="space-y-6">
       <div className="print:bg-white print:text-black">
         {/* Action controls (Hidden during print) */}
-        <div className="flex flex-wrap gap-3 justify-end border-b border-cyber-border/40 pb-4 print:hidden">
-          <button 
-            onClick={exportToCSV}
-            className="flex items-center gap-1.5 font-mono text-xs uppercase font-bold border border-cyber-border bg-slate-900 px-3 py-2 rounded text-slate-300 hover:border-cyber-cyan hover:text-cyber-cyan transition-all cursor-pointer"
-          >
-            <FileSpreadsheet size={14} />
-            Export CSV
-          </button>
-          <button 
-            onClick={handlePrint}
-            className="flex items-center gap-1.5 font-mono text-xs uppercase font-bold border border-cyber-border bg-slate-900 px-3 py-2 rounded text-slate-300 hover:border-cyber-cyan hover:text-cyber-cyan transition-all cursor-pointer"
-          >
-            <Printer size={14} />
-            Print Report
-          </button>
+        <div className="flex flex-wrap gap-3 items-center justify-between border-b border-cyber-border/40 pb-4 print:hidden">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-xs text-slate-400 uppercase">Target Pay Cycle:</span>
+            <select
+              value={selectedCycle}
+              onChange={(e) => setSelectedCycle(e.target.value)}
+              className="bg-slate-950 border border-cyber-border rounded px-3 py-1.5 text-cyber-cyan text-xs font-mono focus:outline-none focus:border-cyber-cyan cursor-pointer"
+            >
+              {availableCycles.map(cycle => (
+                <option key={cycle} value={cycle}>{cycle}</option>
+              ))}
+            </select>
+          </div>
+          
+          <div className="flex gap-3">
+            <button 
+              onClick={exportToCSV}
+              className="flex items-center gap-1.5 font-mono text-xs uppercase font-bold border border-cyber-border bg-slate-900 px-3 py-2 rounded text-slate-300 hover:border-cyber-cyan hover:text-cyber-cyan transition-all cursor-pointer"
+            >
+              <FileSpreadsheet size={14} />
+              Export CSV
+            </button>
+            <button 
+              onClick={handlePrint}
+              className="flex items-center gap-1.5 font-mono text-xs uppercase font-bold border border-cyber-border bg-slate-900 px-3 py-2 rounded text-slate-300 hover:border-cyber-cyan hover:text-cyber-cyan transition-all cursor-pointer"
+            >
+              <Printer size={14} />
+              Print Report
+            </button>
+          </div>
         </div>
 
         {/* Report Document Box */}
         <div className="tactical-panel p-6 rounded clip-corners border border-cyber-border/40 bg-cyber-dark/30 relative">
           <div className="text-center font-mono border-b border-cyber-border/40 pb-4 mb-6">
             <h1 className="text-xl font-bold tracking-widest text-cyber-cyan uppercase print:text-black">
-              ZAMPEAK PERFORMANCE AUDIT REPORT
+              ZAMPEAK CORP PAYROLL LEDGER
             </h1>
             <p className="text-[10px] text-slate-400 mt-1 print:text-slate-600">
-              GAME METRICS: DELTA FORCE MOBILE — GENERATED ON {new Date().toLocaleString()}
+              CYCLE: {selectedCycle} ({getCycleRangeLabel(selectedCycle)}) — GENERATED ON {new Date().toLocaleString()}
             </p>
           </div>
 
           {/* Table */}
-          {gamerPerformances.length === 0 ? (
+          {payrollSummaries.length === 0 ? (
             <div className="py-12 text-center text-slate-500 font-mono text-xs">
               NO OPERATIONS LOADED IN THE SYSTEM.
             </div>
@@ -243,45 +339,48 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
               <div className="overflow-x-auto">
                 <table className="w-full text-left font-mono text-xs border-collapse">
                   <thead>
-                    <tr className="border-b-2 border-cyber-border text-slate-400 print:text-slate-700 font-bold uppercase text-[10px]">
-                      <th className="py-2.5 px-2">Gamer Name</th>
-                      <th className="py-2.5 px-2">ID</th>
-                      <th className="py-2.5 px-2 text-right">Deployed</th>
-                      <th className="py-2.5 px-2 text-right text-cyber-green print:text-green-700 font-bold">Completed</th>
-                      <th className="py-2.5 px-2 text-right text-cyber-red print:text-red-700 font-bold">Violations</th>
-                      <th className="py-2.5 px-2 text-right">Farmed Assets</th>
-                      <th className="py-2.5 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black">Expected Pay</th>
+                    <tr className="border-b-2 border-cyber-border text-slate-400 print:text-slate-700 font-bold uppercase text-[9px]">
+                      <th className="py-2.5 px-2">Operator Name</th>
+                      <th className="py-2.5 px-2">Clearance ID</th>
+                      <th className="py-2.5 px-2">Role/Level</th>
+                      <th className="py-2.5 px-2 text-center">Days Worked</th>
+                      <th className="py-2.5 px-2 text-right">Base Salary</th>
+                      <th className="py-2.5 px-2 text-right">Base Earned</th>
+                      <th className="py-2.5 px-2 text-right text-cyber-red print:text-red-700 font-bold">Deductions</th>
+                      <th className="py-2.5 px-2 text-right text-cyber-green print:text-green-700 font-bold">On-Time Bonus</th>
+                      <th className="py-2.5 px-2 text-right text-cyber-green print:text-green-700 font-bold">Orders Bonus</th>
+                      <th className="py-2.5 px-2 text-right text-cyber-green print:text-green-700 font-bold">Team Leader Bonus</th>
+                      <th className="py-2.5 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black">Net Pay</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-cyber-border/30 text-slate-300 print:text-black">
-                    {gamerPerformances.map((gp) => (
-                      <tr key={gp.gamer.id} className="hover:bg-slate-900/20">
-                        <td className="py-3 px-2 font-bold">{gp.gamer.name}</td>
-                        <td className="py-3 px-2 text-slate-400 print:text-slate-600">ID: {gp.gamer.employee_id}</td>
-                        <td className="py-3 px-2 text-right">{gp.totalOrders}</td>
-                        <td className="py-3 px-2 text-right text-cyber-green print:text-green-700 font-bold">{gp.completedOrders}</td>
-                        <td className="py-3 px-2 text-right text-cyber-red print:text-red-700 font-bold">{gp.violationOrders}</td>
-                        <td className="py-3 px-2 text-right font-bold">{gp.totalAssetsFarmed}M</td>
-                        <td className="py-3 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black">K{gp.totalPayoutExpected}</td>
+                    {payrollSummaries.map((p) => (
+                      <tr key={p.gamerId} className="hover:bg-slate-900/20">
+                        <td className="py-3 px-2 font-bold">{p.gamerName}</td>
+                        <td className="py-3 px-2 text-slate-400 print:text-slate-600 font-mono">{p.employeeId}</td>
+                        <td className="py-3 px-2 capitalize">{p.gamerRole.replace('_', ' ')} / {p.gamerRole === 'technical_manager' ? 'contract' : p.level}</td>
+                        <td className="py-3 px-2 text-center font-bold">{p.daysWorked} / 26</td>
+                        <td className="py-3 px-2 text-right">K{p.baseSalary}</td>
+                        <td className="py-3 px-2 text-right">K{p.basePayEarned.toFixed(2)}</td>
+                        <td className="py-3 px-2 text-right text-cyber-red print:text-red-700 font-bold">K-{p.deductions.toFixed(2)}</td>
+                        <td className="py-3 px-2 text-right text-cyber-green print:text-green-700">K{p.attendanceBonus}</td>
+                        <td className="py-3 px-2 text-right text-cyber-green print:text-green-700">K{p.orderBonus}</td>
+                        <td className="py-3 px-2 text-right text-cyber-green print:text-green-700">K{p.teamVolumeBonus}</td>
+                        <td className="py-3 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black">K{p.totalPay.toLocaleString()}</td>
                       </tr>
                     ))}
                     {/* Aggregates Summary Row */}
-                    <tr className="border-t-2 border-cyber-cyan bg-cyber-dark/40 font-bold text-slate-200 print:text-black">
-                      <td className="py-3 px-2 uppercase" colSpan={2}>SYSTEM TOTALS</td>
-                      <td className="py-3 px-2 text-right font-bold">
-                        {gamerPerformances.reduce((sum, g) => sum + g.totalOrders, 0)}
-                      </td>
-                      <td className="py-3 px-2 text-right text-cyber-green print:text-green-700 font-bold">
-                        {totalCompletedMissions}
-                      </td>
-                      <td className="py-3 px-2 text-right text-cyber-red print:text-red-700 font-bold">
-                        {gamerPerformances.reduce((sum, g) => sum + g.violationOrders, 0)}
-                      </td>
-                      <td className="py-3 px-2 text-right font-bold">
-                        {totalAssetsFarmedAll}M Total
-                      </td>
-                      <td className="py-3 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black text-sm">
-                        K{totalPayoutAll}
+                    <tr className="border-t-2 border-cyber-cyan bg-cyber-dark/40 font-bold text-slate-200 print:text-black text-[10px]">
+                      <td className="py-3 px-2 uppercase font-black" colSpan={3}>SYSTEM TOTALS</td>
+                      <td className="py-3 px-2 text-center font-black">-</td>
+                      <td className="py-3 px-2 text-right font-black">K{totalBaseSalary.toLocaleString()}</td>
+                      <td className="py-3 px-2 text-right font-black">K{totalBasePayEarned.toLocaleString()}</td>
+                      <td className="py-3 px-2 text-right text-cyber-red print:text-red-700 font-black">K-{totalDeductions.toLocaleString()}</td>
+                      <td className="py-3 px-2 text-right text-cyber-green print:text-green-700 font-black">K{totalAttendanceBonus}</td>
+                      <td className="py-3 px-2 text-right text-cyber-green print:text-green-700 font-black">K{totalOrderPayout.toLocaleString()}</td>
+                      <td className="py-3 px-2 text-right text-cyber-green print:text-green-700 font-black">K{totalTeamVolumeBonus}</td>
+                      <td className="py-3 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black text-xs">
+                        K{totalPayAll.toLocaleString()}
                       </td>
                     </tr>
                   </tbody>
@@ -293,7 +392,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                 <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30">
                   <span className="text-[9px] text-slate-500 uppercase font-mono">Completion Success Ratio</span>
                   <div className="text-lg font-bold text-cyber-green font-mono mt-0.5">
-                    {totalCompletedMissions} of {orders.length} Missions ({orders.length > 0 ? Math.round((totalCompletedMissions / orders.length) * 100) : 0}%)
+                    {totalCompletedMissions} Completed Missions
                   </div>
                 </div>
                 <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30">
@@ -303,9 +402,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                   </div>
                 </div>
                 <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30">
-                  <span className="text-[9px] text-slate-500 uppercase font-mono">Total Capital Payouts</span>
+                  <span className="text-[9px] text-slate-500 uppercase font-mono">Expected Net Payroll</span>
                   <div className="text-lg font-bold text-cyber-cyan font-mono mt-0.5">
-                    K{totalPayoutAll} Expected Payouts
+                    K{totalPayAll.toLocaleString()}
                   </div>
                 </div>
               </div>
