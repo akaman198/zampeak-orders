@@ -22,6 +22,8 @@ export default function DashboardTab({
 }) {
   const { orders: allOrders, gamers, updateOrderStatus, role, gamerProfile, isDemo, user, calculatePayroll } = useApp();
 
+  const isManager = role === 'admin' || (role === 'gamer' && gamerProfile?.gamer_role === 'technical_manager');
+
   // Filter orders if user is a gamer
   const orders = role === 'gamer' && gamerProfile && gamerProfile.gamer_role !== 'technical_manager'
     ? allOrders.filter(o => o.gamer_id === gamerProfile.id)
@@ -208,7 +210,7 @@ export default function DashboardTab({
     .slice(0, 5);
 
   const handleQuickStatus = async (orderId: string, newStatus: OrderStatus) => {
-    if (role === 'admin') {
+    if (isManager) {
       await updateOrderStatus(orderId, newStatus);
     }
   };
@@ -244,10 +246,10 @@ export default function DashboardTab({
         <div>
           <h2 className="text-xl font-mono font-bold tracking-wider text-cyber-cyan uppercase flex items-center gap-2">
             <span className="h-2 w-2 bg-cyber-cyan rounded-full animate-ping"></span>
-            {role === 'admin' ? 'Operational Command Center' : 'Gamer Data Access terminal'}
+            {isManager ? 'Operational Command Center' : 'Gamer Data Access terminal'}
           </h2>
           <p className="text-xs text-slate-400 font-mono mt-1">
-            TARGET: DELTA FORCE MOBILE — {role === 'admin' ? 'AGENT RECORDS & METRIC AUDITS' : `MY PERFORMANCE PORTFOLIO ID: ${gamerProfile?.employee_id}`}
+            TARGET: DELTA FORCE MOBILE — {isManager ? 'AGENT RECORDS & METRIC AUDITS' : `MY PERFORMANCE PORTFOLIO ID: ${gamerProfile?.employee_id}`}
           </p>
           <div className="text-[11px] font-mono text-slate-300 mt-2 flex items-center gap-1.5">
             <span className="text-slate-500 uppercase">OPERATOR:</span>
@@ -379,13 +381,13 @@ export default function DashboardTab({
           </div>
         </div>
 
-        {/* Expected Pay Cards/Table depending on role */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-          
-          {/* Card 1: Payout Summary */}
-          {(() => {
-            if (role === 'admin') {
-              const activeOperators = gamers.filter(g => g.status === 'active');
+          {/* Expected Pay Cards/Table depending on role */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            
+            {/* Card 1: Payout Summary */}
+            {(() => {
+              if (isManager) {
+                const activeOperators = gamers.filter(g => g.status === 'active' && g.gamer_role !== 'technical_manager');
               const allPayrolls = activeOperators.map(g => calculatePayroll(g.id, selectedCycle));
               const centralExpectedPayout = allPayrolls.reduce((sum, p) => sum + p.totalPay, 0);
               const centralTotalOrdersCount = getOrdersInCycle(selectedCycle).length;
@@ -436,10 +438,10 @@ export default function DashboardTab({
             }
           })()}
 
-          {/* Card 2: List (Depending on Role) */}
-          <div className="lg:col-span-3 border border-cyber-border/20 rounded p-4 bg-slate-950/40">
-            {role === 'admin' ? (
-              // Admin View: Breakdown per Gamer
+            {/* Card 2: List (Depending on Role) */}
+            <div className="lg:col-span-3 border border-cyber-border/20 rounded p-4 bg-slate-950/40">
+              {isManager ? (
+                // Admin View: Breakdown per Gamer
               <div className="space-y-2">
                 <div className="font-mono text-[10px] text-slate-400 uppercase tracking-wider pb-1.5 border-b border-cyber-border/20">Operational Payroll Ledger</div>
                 {gamers.length === 0 ? (
@@ -524,7 +526,7 @@ export default function DashboardTab({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Donut Chart (Expanded to full width if gamer, to keep layout beautiful) */}
         <div className={`tactical-panel p-5 rounded clip-corners border border-cyber-border/40 flex flex-col justify-between ${
-          role === 'admin' ? 'lg:col-span-1' : 'lg:col-span-3'
+          isManager ? 'lg:col-span-1' : 'lg:col-span-3'
         }`}>
           <div>
             <h3 className="font-mono font-bold text-sm text-slate-300 uppercase tracking-widest border-b border-cyber-border/40 pb-2 mb-4 flex justify-between items-center">
@@ -582,8 +584,8 @@ export default function DashboardTab({
           </div>
         </div>
 
-        {/* Center Widget: Gamer & Team Rankings (Only shown to Admin) */}
-        {role === 'admin' && (
+        {/* Center Widget: Gamer & Team Rankings (Only shown to Admin & Technical Manager) */}
+        {isManager && (
           <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
             
             {/* Gamers Leaderboard */}
@@ -749,7 +751,7 @@ export default function DashboardTab({
       {/* Bottom Row: Active/Recent Orders Queue */}
       <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40">
         <h3 className="font-mono font-bold text-sm text-slate-300 uppercase tracking-widest border-b border-cyber-border/40 pb-2 mb-4 flex justify-between items-center">
-          <span>{role === 'admin' ? 'Active Command Queue (Quick Status Updates)' : 'My Active Missions'}</span>
+          <span>{isManager ? 'Active Command Queue (Quick Status Updates)' : 'My Active Missions'}</span>
           <span className="text-xs text-cyber-cyan font-mono cursor-pointer hover:underline" onClick={() => onNavigate('orders')}>Manage All Orders</span>
         </h3>
 
@@ -763,12 +765,12 @@ export default function DashboardTab({
               <thead>
                 <tr className="border-b border-cyber-border text-slate-400 bg-cyber-dark/40">
                   <th className="p-3">Order Code</th>
-                  {role === 'admin' && <th className="p-3">Assigned Gamer</th>}
+                  {isManager && <th className="p-3">Assigned Gamer</th>}
                   <th className="p-3 text-right">Size</th>
                   <th className="p-3 text-right">Payout (K)</th>
                   <th className="p-3">Deployment Date</th>
                   <th className="p-3">Status</th>
-                  {role === 'admin' && <th className="p-3 text-center">Quick Action</th>}
+                  {isManager && <th className="p-3 text-center">Quick Action</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-cyber-border/40">
@@ -778,7 +780,7 @@ export default function DashboardTab({
                   return (
                     <tr key={order.id} className="hover:bg-slate-900/40 transition-colors">
                       <td className="p-3 text-cyber-cyan font-bold">{order.order_number}</td>
-                      {role === 'admin' && (
+                      {isManager && (
                         <td className="p-3">
                           <div className="font-bold text-slate-300">{assignedGamer ? assignedGamer.name : 'Unknown Gamer'}</div>
                           <div className="text-[10px] text-slate-500">{assignedGamer ? `ID: ${assignedGamer.employee_id}` : ''}</div>
@@ -803,7 +805,7 @@ export default function DashboardTab({
                           {order.status}
                         </span>
                       </td>
-                      {role === 'admin' && (
+                      {isManager && (
                         <td className="p-3 text-center">
                           <div className="flex justify-center gap-1">
                             {order.status === 'Running' && (

@@ -49,6 +49,25 @@ export default function OrdersTab() {
 
   const isManager = role === 'admin' || (role === 'gamer' && gamerProfile?.gamer_role === 'technical_manager');
 
+  // Get active/standby gamers list (exclude technical manager)
+  const getGamerRosterStatus = () => {
+    const activeGamers = gamers.filter(g => g.status === 'active' && g.gamer_role !== 'technical_manager');
+    
+    return activeGamers.map(g => {
+      // Find running orders assigned to this gamer
+      const runningMissions = allOrders.filter(o => o.gamer_id === g.id && o.status === 'Running');
+      return {
+        gamer: g,
+        isDeployed: runningMissions.length > 0,
+        currentMissions: runningMissions
+      };
+    });
+  };
+
+  const gamerRosterStatus = getGamerRosterStatus();
+  const standbyGamers = gamerRosterStatus.filter(r => !r.isDeployed);
+  const deployedGamers = gamerRosterStatus.filter(r => r.isDeployed);
+
   // Filter gamers list in Select dropdown
   const filteredGamersForSelect = gamers.filter(g => 
     g.name.toLowerCase().includes(gamerSearchQuery.toLowerCase()) ||
@@ -445,145 +464,236 @@ export default function OrdersTab() {
         </div>
       )}
 
-      {/* Orders Table Container */}
-      <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 overflow-hidden">
-        {filteredOrders.length === 0 ? (
-          <div className="py-16 text-center font-mono text-slate-500 text-xs">
-            NO ORDERS FOUND MATCHING CURRENT FILTERS.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full font-mono text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-cyber-border text-slate-400 bg-cyber-dark/40 select-none">
-                  <th 
-                    className="p-3 cursor-pointer hover:text-cyber-cyan transition-colors"
-                    onClick={() => toggleSort('order_number')}
-                  >
-                    Order Code {sortBy === 'order_number' && (sortDirection === 'asc' ? '▲' : '▼')}
-                  </th>
-                  {isManager && <th className="p-3">Gamer Details</th>}
-                  <th 
-                    className="p-3 text-right cursor-pointer hover:text-cyber-cyan transition-colors"
-                    onClick={() => toggleSort('size')}
-                  >
-                    Size {sortBy === 'size' && (sortDirection === 'asc' ? '▲' : '▼')}
-                  </th>
-                  <th 
-                    className="p-3 text-right cursor-pointer hover:text-cyber-cyan transition-colors"
-                    onClick={() => toggleSort('payout')}
-                  >
-                    Payout (K) {sortBy === 'payout' && (sortDirection === 'asc' ? '▲' : '▼')}
-                  </th>
-                  <th 
-                    className="p-3 cursor-pointer hover:text-cyber-cyan transition-colors"
-                    onClick={() => toggleSort('date')}
-                  >
-                    Deployed On {sortBy === 'date' && (sortDirection === 'asc' ? '▲' : '▼')}
-                  </th>
-                  <th className="p-3">Status</th>
-                  {isManager && <th className="p-3 text-center">Operational Shifts</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-cyber-border/30">
-                {filteredOrders.map((order) => {
-                  const assignedGamer = gamers.find(g => g.id === order.gamer_id);
-
-                  return (
-                    <tr key={order.id} className="hover:bg-slate-900/30 transition-colors">
-                      <td className="p-3 text-cyber-cyan font-bold">{order.order_number}</td>
-                      {isManager && (
-                        <td className="p-3">
-                          <div className="font-bold text-slate-300">{assignedGamer ? assignedGamer.name : 'Unknown Gamer'}</div>
-                          <div className="text-[10px] text-slate-500">{assignedGamer ? `ID: ${assignedGamer.employee_id}` : ''}</div>
-                        </td>
-                      )}
-                      <td className="p-3 text-right font-bold text-slate-300">
-                        {order.size_millions}M
-                        <span className="text-[9px] text-slate-500 font-normal block">{order.asset_type || 'Haval Coins'}</span>
-                      </td>
-                      <td className="p-3 text-right font-bold text-cyber-green">
-                        K{order.payout}
-                        {order.payout !== order.size_millions && (
-                          <span className="text-[8px] text-cyber-cyan font-bold block">(Override)</span>
-                        )}
-                      </td>
-                      <td className="p-3 text-slate-400">
-                        {new Date(order.start_date).toLocaleDateString()} {new Date(order.start_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </td>
-                      <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                          order.status === 'Running' ? 'bg-cyber-cyan/15 text-cyber-cyan border border-cyber-cyan/30' :
-                          order.status === 'Completed' ? 'bg-cyber-green/15 text-cyber-green border border-cyber-green/30' :
-                          order.status === 'Paused' ? 'bg-cyber-amber/15 text-cyber-amber border border-cyber-amber/30' :
-                          order.status === 'Violation' ? 'bg-cyber-red/15 text-cyber-red border border-cyber-red/30' :
-                          'bg-slate-700/15 text-slate-400 border border-slate-600/30'
-                        }`}>
-                          {order.status}
-                        </span>
-                      </td>
-                      {isManager && (
-                        <td className="p-3">
-                          <div className="flex items-center justify-center gap-1.5">
-                            {/* Quick Transitions */}
-                            <div className="flex gap-0.5 border border-cyber-border/40 rounded p-0.5 bg-slate-950/80">
-                              <button 
-                                onClick={() => updateOrderStatus(order.id, 'Running')}
-                                title="Set Running"
-                                className={`p-1 rounded transition-colors ${order.status === 'Running' ? 'bg-cyber-cyan text-slate-950' : 'text-slate-400 hover:text-cyber-cyan'}`}
-                              >
-                                <Play size={10} />
-                              </button>
-                              <button 
-                                onClick={() => updateOrderStatus(order.id, 'Paused')}
-                                title="Set Paused"
-                                className={`p-1 rounded transition-colors ${order.status === 'Paused' ? 'bg-cyber-amber text-slate-950' : 'text-slate-400 hover:text-cyber-amber'}`}
-                              >
-                                <Pause size={10} />
-                              </button>
-                              <button 
-                                onClick={() => updateOrderStatus(order.id, 'Completed')}
-                                title="Set Completed"
-                                className={`p-1 rounded transition-colors ${order.status === 'Completed' ? 'bg-cyber-green text-slate-950' : 'text-slate-400 hover:text-cyber-green'}`}
-                              >
-                                <CheckCircle size={10} />
-                              </button>
-                              <button 
-                                onClick={() => updateOrderStatus(order.id, 'Violation')}
-                                title="Set Violation"
-                                className={`p-1 rounded transition-colors ${order.status === 'Violation' ? 'bg-cyber-red text-slate-950 font-bold' : 'text-slate-400 hover:text-cyber-red'}`}
-                              >
-                                <AlertTriangle size={10} />
-                              </button>
-                            </div>
-
-                            {/* Full Edit / Delete */}
-                            <div className="flex gap-1 pl-1 border-l border-cyber-border/30">
-                              <button 
-                                onClick={() => openEditOrderForm(order)}
-                                title="Edit Order parameters"
-                                className="p-1.5 hover:bg-cyber-cyan/15 rounded text-slate-400 hover:text-cyber-cyan transition-colors"
-                              >
-                                <Edit3 size={11} />
-                              </button>
-                              <button 
-                                onClick={() => handleDelete(order.id)}
-                                title="Terminate Log"
-                                className="p-1.5 hover:bg-cyber-red/15 rounded text-slate-400 hover:text-cyber-red transition-colors"
-                              >
-                                <Trash2 size={11} />
-                              </button>
-                            </div>
-                          </div>
-                        </td>
-                      )}
+      {/* Grid wrapper for two-column desktop view */}
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+        
+        {/* Main Orders Table (3/4 width) */}
+        <div className="xl:col-span-3 space-y-6">
+          {/* Orders Table Container */}
+          <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 overflow-hidden">
+            {filteredOrders.length === 0 ? (
+              <div className="py-16 text-center font-mono text-slate-500 text-xs">
+                NO ORDERS FOUND MATCHING CURRENT FILTERS.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full font-mono text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-cyber-border text-slate-400 bg-cyber-dark/40 select-none">
+                      <th 
+                        className="p-3 cursor-pointer hover:text-cyber-cyan transition-colors"
+                        onClick={() => toggleSort('order_number')}
+                      >
+                        Order Code {sortBy === 'order_number' && (sortDirection === 'asc' ? '▲' : '▼')}
+                      </th>
+                      {isManager && <th className="p-3">Gamer Details</th>}
+                      <th 
+                        className="p-3 text-right cursor-pointer hover:text-cyber-cyan transition-colors"
+                        onClick={() => toggleSort('size')}
+                      >
+                        Size {sortBy === 'size' && (sortDirection === 'asc' ? '▲' : '▼')}
+                      </th>
+                      <th 
+                        className="p-3 text-right cursor-pointer hover:text-cyber-cyan transition-colors"
+                        onClick={() => toggleSort('payout')}
+                      >
+                        Payout (K) {sortBy === 'payout' && (sortDirection === 'asc' ? '▲' : '▼')}
+                      </th>
+                      <th 
+                        className="p-3 cursor-pointer hover:text-cyber-cyan transition-colors"
+                        onClick={() => toggleSort('date')}
+                      >
+                        Deployed On {sortBy === 'date' && (sortDirection === 'asc' ? '▲' : '▼')}
+                      </th>
+                      <th className="p-3">Status</th>
+                      {isManager && <th className="p-3 text-center">Operational Shifts</th>}
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody className="divide-y divide-cyber-border/30">
+                    {filteredOrders.map((order) => {
+                      const assignedGamer = gamers.find(g => g.id === order.gamer_id);
+
+                      return (
+                        <tr key={order.id} className="hover:bg-slate-900/30 transition-colors">
+                          <td className="p-3 text-cyber-cyan font-bold">{order.order_number}</td>
+                          {isManager && (
+                            <td className="p-3">
+                              <div className="font-bold text-slate-300">{assignedGamer ? assignedGamer.name : 'Unknown Gamer'}</div>
+                              <div className="text-[10px] text-slate-500">{assignedGamer ? `ID: ${assignedGamer.employee_id}` : ''}</div>
+                            </td>
+                          )}
+                          <td className="p-3 text-right font-bold text-slate-300">
+                            {order.size_millions}M
+                            <span className="text-[9px] text-slate-500 font-normal block">{order.asset_type || 'Haval Coins'}</span>
+                          </td>
+                          <td className="p-3 text-right font-bold text-cyber-green">
+                            K{order.payout}
+                            {order.payout !== order.size_millions && (
+                              <span className="text-[8px] text-cyber-cyan font-bold block">(Override)</span>
+                            )}
+                          </td>
+                          <td className="p-3 text-slate-400">
+                            {new Date(order.start_date).toLocaleDateString()} {new Date(order.start_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </td>
+                          <td className="p-3">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                              order.status === 'Running' ? 'bg-cyber-cyan/15 text-cyber-cyan border border-cyber-cyan/30' :
+                              order.status === 'Completed' ? 'bg-cyber-green/15 text-cyber-green border border-cyber-green/30' :
+                              order.status === 'Paused' ? 'bg-cyber-amber/15 text-cyber-amber border border-cyber-amber/30' :
+                              order.status === 'Violation' ? 'bg-cyber-red/15 text-cyber-red border border-cyber-red/30' :
+                              'bg-slate-700/15 text-slate-400 border border-slate-600/30'
+                            }`}>
+                              {order.status}
+                            </span>
+                          </td>
+                          {isManager && (
+                            <td className="p-3">
+                              <div className="flex items-center justify-center gap-1.5">
+                                {/* Quick Transitions */}
+                                <div className="flex gap-0.5 border border-cyber-border/40 rounded p-0.5 bg-slate-950/80">
+                                  <button 
+                                    onClick={() => updateOrderStatus(order.id, 'Running')}
+                                    title="Set Running"
+                                    className={`p-1 rounded transition-colors ${order.status === 'Running' ? 'bg-cyber-cyan text-slate-950' : 'text-slate-400 hover:text-cyber-cyan'}`}
+                                  >
+                                    <Play size={10} />
+                                  </button>
+                                  <button 
+                                    onClick={() => updateOrderStatus(order.id, 'Paused')}
+                                    title="Set Paused"
+                                    className={`p-1 rounded transition-colors ${order.status === 'Paused' ? 'bg-cyber-amber text-slate-950' : 'text-slate-400 hover:text-cyber-amber'}`}
+                                  >
+                                    <Pause size={10} />
+                                  </button>
+                                  <button 
+                                    onClick={() => updateOrderStatus(order.id, 'Completed')}
+                                    title="Set Completed"
+                                    className={`p-1 rounded transition-colors ${order.status === 'Completed' ? 'bg-cyber-green text-slate-950' : 'text-slate-400 hover:text-cyber-green'}`}
+                                  >
+                                    <CheckCircle size={10} />
+                                  </button>
+                                  <button 
+                                    onClick={() => updateOrderStatus(order.id, 'Violation')}
+                                    title="Set Violation"
+                                    className={`p-1 rounded transition-colors ${order.status === 'Violation' ? 'bg-cyber-red text-slate-950 font-bold' : 'text-slate-400 hover:text-cyber-red'}`}
+                                  >
+                                    <AlertTriangle size={10} />
+                                  </button>
+                                </div>
+
+                                {/* Full Edit / Delete */}
+                                <div className="flex gap-1 pl-1 border-l border-cyber-border/30">
+                                  <button 
+                                    onClick={() => openEditOrderForm(order)}
+                                    title="Edit Order parameters"
+                                    className="p-1.5 hover:bg-cyber-cyan/15 rounded text-slate-400 hover:text-cyber-cyan transition-colors"
+                                  >
+                                    <Edit3 size={11} />
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDelete(order.id)}
+                                    title="Terminate Log"
+                                    className="p-1.5 hover:bg-cyber-red/15 rounded text-slate-400 hover:text-cyber-red transition-colors"
+                                  >
+                                    <Trash2 size={11} />
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
+        </div>
+
+        {/* Standby panel (1/4 width) */}
+        <div className="xl:col-span-1">
+          {isManager && (
+            <div className="tactical-panel p-4 rounded clip-corners border border-cyber-border/40 bg-slate-950/20 font-mono text-xs">
+              <h3 className="font-bold text-xs text-slate-300 uppercase tracking-widest border-b border-cyber-border/40 pb-2 mb-3 flex items-center justify-between">
+                <span>Operational Roster</span>
+                <span className="text-[9px] text-slate-500 font-normal lowercase bg-cyber-cyan/10 px-1 py-0.5 rounded">standby status</span>
+              </h3>
+
+              <div className="space-y-4">
+                {/* Standby list */}
+                <div>
+                  <div className="text-[10px] text-cyber-cyan uppercase font-bold tracking-wider mb-1.5 flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-cyber-cyan animate-pulse"></span>
+                    Standby (Ready to Deploy) - {standbyGamers.length}
+                  </div>
+                  {standbyGamers.length === 0 ? (
+                    <div className="text-[10px] text-slate-600 uppercase italic pl-2.5">All operators deployed.</div>
+                  ) : (
+                    <div className="space-y-1 max-h-[220px] overflow-y-auto pr-1">
+                      {standbyGamers.map(r => (
+                        <div 
+                          key={r.gamer.id} 
+                          onClick={() => {
+                            setGamerId(r.gamer.id);
+                            // Set default deployment date on form open
+                            const now = new Date();
+                            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+                            setOrderNumber('');
+                            setSizeMillions(50);
+                            setAssetType('Haval Coins');
+                            setStartDate(now.toISOString().slice(0, 16));
+                            setStatus('Running');
+                            setPayout(50);
+                            setIsPayoutOverridden(false);
+                            setFormError('');
+                            setGamerSearchQuery('');
+                            setIsEditing(null);
+                            setIsFormOpen(true);
+                          }}
+                          className="flex justify-between items-center p-1.5 rounded border border-cyber-border/20 bg-slate-900/30 hover:bg-cyber-cyan/10 hover:border-cyber-cyan/30 transition-all cursor-pointer"
+                          title="Click to Deploy Order to this gamer"
+                        >
+                          <span className="font-bold text-slate-300">{r.gamer.name}</span>
+                          <span className="text-[9px] text-slate-500 font-mono">ID: {r.gamer.employee_id}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Deployed list */}
+                <div>
+                  <div className="text-[10px] text-cyber-amber uppercase font-bold tracking-wider mb-1.5 flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-cyber-amber animate-pulse"></span>
+                    Deployed (Active) - {deployedGamers.length}
+                  </div>
+                  {deployedGamers.length === 0 ? (
+                    <div className="text-[10px] text-slate-600 uppercase italic pl-2.5">No active deployments.</div>
+                  ) : (
+                    <div className="space-y-1 max-h-[220px] overflow-y-auto pr-1">
+                      {deployedGamers.map(r => (
+                        <div key={r.gamer.id} className="p-1.5 rounded border border-cyber-border/10 bg-slate-900/10">
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-slate-400">{r.gamer.name}</span>
+                            <span className="text-[9px] text-slate-500">ID: {r.gamer.employee_id}</span>
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {r.currentMissions.map(m => (
+                              <span key={m.id} className="text-[8px] px-1 bg-cyber-amber/10 border border-cyber-amber/25 text-cyber-amber rounded font-mono font-bold">
+                                {m.order_number} ({m.size_millions}M)
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
