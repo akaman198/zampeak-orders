@@ -277,7 +277,7 @@ export default function DashboardTab({
           <div className="absolute right-2 bottom-2 text-cyber-cyan/10 group-hover:text-cyber-cyan/20 transition-colors">
             <Gamepad2 size={64} />
           </div>
-          <div className="font-mono text-xs text-slate-400 uppercase tracking-widest">{role === 'admin' ? 'Total Missions' : 'My Missions'}</div>
+          <div className="font-mono text-xs text-slate-400 uppercase tracking-widest">{isManager ? 'Total Missions' : 'My Missions'}</div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-3xl font-mono font-black text-cyber-cyan text-glow-cyan">{totalOrders}</span>
             <span className="text-xs text-slate-500 font-mono">Assigned</span>
@@ -293,14 +293,14 @@ export default function DashboardTab({
           <div className="absolute right-2 bottom-2 text-cyber-green/10 group-hover:text-cyber-green/20 transition-colors">
             <DollarSign size={64} />
           </div>
-          <div className="font-mono text-xs text-slate-400 uppercase tracking-widest font-bold">{role === 'admin' ? 'Total Expected Pay' : 'My Earnings'}</div>
+          <div className="font-mono text-xs text-slate-400 uppercase tracking-widest font-bold">{isManager ? 'Total Expected Pay' : 'My Earnings'}</div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-3xl font-mono font-black text-cyber-green text-glow-green">K{totalEarnings}</span>
             <span className="text-xs text-slate-500 font-mono">Kwacha</span>
           </div>
           <div className="mt-2 text-xs text-slate-400 font-mono flex justify-between">
             <span>Farmed: {totalAssetsFarmed}M</span>
-            {role === 'admin' && (
+            {isManager && (
               <span className="text-cyber-green cursor-pointer hover:underline" onClick={() => onNavigate('reports')}>Reports &rarr;</span>
             )}
           </div>

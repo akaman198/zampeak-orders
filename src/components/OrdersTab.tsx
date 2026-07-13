@@ -178,7 +178,7 @@ export default function OrdersTab() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!isManager) return;
+    if (role !== 'admin') return;
     if (confirm('Are you sure you want to terminate this order log?')) {
       const res = await deleteOrder(id);
       if (!res.success) {
@@ -590,13 +590,15 @@ export default function OrdersTab() {
                                   >
                                     <Edit3 size={11} />
                                   </button>
-                                  <button 
-                                    onClick={() => handleDelete(order.id)}
-                                    title="Terminate Log"
-                                    className="p-1.5 hover:bg-cyber-red/15 rounded text-slate-400 hover:text-cyber-red transition-colors"
-                                  >
-                                    <Trash2 size={11} />
-                                  </button>
+                                  {role === 'admin' && (
+                                    <button 
+                                      onClick={() => handleDelete(order.id)}
+                                      title="Terminate Log"
+                                      className="p-1.5 hover:bg-cyber-red/15 rounded text-slate-400 hover:text-cyber-red transition-colors"
+                                    >
+                                      <Trash2 size={11} />
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             </td>
