@@ -43,7 +43,7 @@ export default function OrdersTab() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Filter orders if user is a gamer
-  const orders = role === 'gamer' && gamerProfile
+  const orders = role === 'gamer' && gamerProfile && gamerProfile.gamer_role !== 'technical_manager'
     ? allOrders.filter(o => o.gamer_id === gamerProfile.id)
     : allOrders;
 

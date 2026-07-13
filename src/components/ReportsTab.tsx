@@ -105,6 +105,67 @@ export default function ReportsTab() {
   const totalTeamVolumeBonus = payrollSummaries.reduce((sum, p) => sum + p.teamVolumeBonus, 0);
   const totalPayAll = payrollSummaries.reduce((sum, p) => sum + p.totalPay, 0);
 
+  // Daily Team Performance grouping
+  const getDailyTeamPerformance = () => {
+    const dailyRecords: {
+      date: string;
+      teamLeaderName: string;
+      volume: number;
+      bonus: number;
+    }[] = [];
+
+    // Group completed cycle orders by date and team leader
+    const dayGroups: { [dateStr: string]: { [leaderId: string]: number } } = {};
+
+    cycleOrders.forEach(o => {
+      const d = new Date(o.start_date);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+
+      const gamer = gamers.find(g => g.id === o.gamer_id);
+      if (!gamer) return;
+
+      // Find the team leader ID for this gamer (if they are a gamer, get team_leader_id. If they are a leader, get their own ID).
+      const leaderId = gamer.gamer_role === 'team_leader' ? gamer.id : gamer.team_leader_id;
+      if (!leaderId) return; // Unassigned gamers do not belong to any team
+
+      if (!dayGroups[dateStr]) dayGroups[dateStr] = {};
+      dayGroups[dateStr][leaderId] = (dayGroups[dateStr][leaderId] || 0) + Number(o.size_millions);
+    });
+
+    // Format results and calculate daily bonus
+    Object.keys(dayGroups).sort().reverse().forEach(dateStr => {
+      const leaders = dayGroups[dateStr];
+      Object.keys(leaders).forEach(leaderId => {
+        const leader = gamers.find(g => g.id === leaderId);
+        if (!leader) return;
+
+        const volume = leaders[leaderId];
+        let bonus = 0;
+        if (volume > 50) {
+          const over = volume - 50;
+          const tens = Math.floor(over / 10);
+          if (tens > 0) {
+            bonus = tens * 10;
+          }
+        }
+
+        dailyRecords.push({
+          date: dateStr,
+          teamLeaderName: leader.name,
+          volume,
+          bonus
+        });
+      });
+    });
+
+    return dailyRecords;
+  };
+
+  const dailyTeamPerformance = getDailyTeamPerformance();
+
   // 2. Export functions
   const exportToCSV = () => {
     const headers = [
@@ -405,6 +466,53 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                     K{totalPayAll.toLocaleString()}
                   </div>
                 </div>
+              </div>
+
+              {/* Daily Team Performance Ledger Section */}
+              <div className="mt-8 pt-6 border-t border-cyber-border/40">
+                <h3 className="font-mono font-bold text-sm text-cyber-cyan uppercase tracking-widest mb-4 flex justify-between items-center">
+                  <span>Daily Team Volume Ledger</span>
+                  <span className="text-[9px] text-slate-500 font-normal lowercase bg-cyber-cyan/10 px-1.5 py-0.5 rounded border border-cyber-cyan/20">real-time team tracker</span>
+                </h3>
+                
+                {dailyTeamPerformance.length === 0 ? (
+                  <div className="py-6 text-center text-slate-500 font-mono text-xs border border-dashed border-cyber-border/30 rounded">
+                    NO DAILY TEAM VOLUME DATA RECORDED FOR THIS CYCLE.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto border border-cyber-border/30 rounded">
+                    <table className="w-full text-left font-mono text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-cyber-border text-slate-400 font-bold uppercase text-[9px] bg-slate-950/60 select-none">
+                          <th className="py-2.5 px-3">Date</th>
+                          <th className="py-2.5 px-3">Team Leader</th>
+                          <th className="py-2.5 px-3 text-right">Daily Team Volume</th>
+                          <th className="py-2.5 px-3 text-right text-cyber-green">Daily Leader Bonus</th>
+                          <th className="py-2.5 px-3">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-cyber-border/20 text-slate-300">
+                        {dailyTeamPerformance.map((rec, idx) => (
+                          <tr key={idx} className="hover:bg-slate-900/40 font-mono">
+                            <td className="py-2.5 px-3">{rec.date}</td>
+                            <td className="py-2.5 px-3 font-bold">{rec.teamLeaderName}</td>
+                            <td className="py-2.5 px-3 text-right font-bold">{rec.volume}M Assets</td>
+                            <td className="py-2.5 px-3 text-right font-bold text-cyber-green">K{rec.bonus}</td>
+                            <td className="py-2.5 px-3">
+                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${
+                                rec.volume > 50 
+                                  ? 'bg-cyber-green/10 text-cyber-green' 
+                                  : 'bg-slate-800 text-slate-500'
+                              }`}>
+                                {rec.volume > 50 ? 'Threshold Exceeded' : 'Normal'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}

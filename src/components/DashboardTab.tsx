@@ -23,7 +23,7 @@ export default function DashboardTab({
   const { orders: allOrders, gamers, updateOrderStatus, role, gamerProfile, isDemo, user, calculatePayroll } = useApp();
 
   // Filter orders if user is a gamer
-  const orders = role === 'gamer' && gamerProfile
+  const orders = role === 'gamer' && gamerProfile && gamerProfile.gamer_role !== 'technical_manager'
     ? allOrders.filter(o => o.gamer_id === gamerProfile.id)
     : allOrders;
 
