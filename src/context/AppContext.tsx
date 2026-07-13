@@ -838,12 +838,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const presentDaysForBase = Math.min(26, daysWorked);
     const basePayEarned = presentDaysForBase * dailyRate;
     
-    // Late deductions: K20 per late day
-    const lateDays = cycleAttendance.filter((a) => a.status === 'present_late').length;
-    const lateDeduction = lateDays * 20;
+    // Late deductions: Removed by request
+    const lateDeduction = 0;
     
     const missedDaysDeductions = Math.max(0, baseSalary - basePayEarned);
-    const deductions = missedDaysDeductions + lateDeduction;
+    const deductions = missedDaysDeductions;
 
     // 4. Attendance Bonus: K200 if 26 days on time
     const attendanceBonus = onTimeDays >= 26 ? 200 : 0;

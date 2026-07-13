@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp, getPayPeriodLabel } from '../context/AppContext';
 import { Gamer, GamerLevel, GamerRole } from '../types';
 import { 
   UserPlus, 
@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 export default function GamersTab() {
-  const { gamers, orders, addGamer, updateGamer, deleteGamer, resetGamerPassword } = useApp();
+  const { gamers, orders, addGamer, updateGamer, deleteGamer, resetGamerPassword, calculatePayroll } = useApp();
 
   // Component States
   const [selectedGamer, setSelectedGamer] = useState<Gamer | null>(null);
@@ -167,6 +167,11 @@ export default function GamersTab() {
     const assets = completed.reduce((sum, o) => sum + o.size_millions, 0);
     const expectedPay = completed.reduce((sum, o) => sum + o.payout, 0);
     
+    // Calculate Net Expected Pay for the current cycle
+    const currentCycle = getPayPeriodLabel(new Date().toISOString());
+    const payroll = calculatePayroll(gamerId, currentCycle);
+    const netExpectedPay = payroll.totalPay;
+    
     const total = gamerOrders.length;
     const completionRate = total > 0 ? Math.round((completed.length / total) * 100) : 0;
     const violationRate = total > 0 ? Math.round((violation / total) * 100) : 0;
@@ -181,6 +186,7 @@ export default function GamersTab() {
       cancelledCount: cancelled,
       assetsFarmed: assets,
       expectedPay,
+      netExpectedPay,
       completionRate,
       violationRate
     };
@@ -639,22 +645,26 @@ export default function GamersTab() {
                 const metrics = getGamerProfileMetrics(selectedGamer.id);
                 return (
                   <div className="space-y-6">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 font-mono">
-                      <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 font-mono text-center md:text-left">
+                      <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30 col-span-1">
                         <div className="text-[9px] text-slate-500 uppercase tracking-widest">Total Deployed</div>
                         <div className="text-xl font-bold text-slate-200 mt-1">{metrics.totalCount} Missions</div>
                       </div>
-                      <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30">
+                      <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30 col-span-1">
                         <div className="text-[9px] text-slate-500 uppercase tracking-widest text-cyber-green">Success Ratio</div>
                         <div className="text-xl font-bold text-cyber-green mt-1">{metrics.completionRate}%</div>
                       </div>
-                      <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30">
+                      <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30 col-span-1">
                         <div className="text-[9px] text-slate-500 uppercase tracking-widest text-cyber-red">Violations</div>
                         <div className="text-xl font-bold text-cyber-red mt-1">{metrics.violationCount}</div>
                       </div>
-                      <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30">
-                        <div className="text-[9px] text-slate-500 uppercase tracking-widest text-cyber-cyan">Net Earnings</div>
-                        <div className="text-xl font-bold text-cyber-cyan mt-1">K{metrics.expectedPay}</div>
+                      <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30 col-span-1">
+                        <div className="text-[9px] text-slate-500 uppercase tracking-widest text-cyber-cyan">Order Earnings</div>
+                        <div className="text-xl font-bold text-cyber-cyan mt-1">K{metrics.expectedPay.toLocaleString()}</div>
+                      </div>
+                      <div className="p-3 bg-slate-950/60 rounded border border-cyber-cyan/35 col-span-1">
+                        <div className="text-[9px] text-cyber-cyan uppercase tracking-widest font-black">Net Expected Pay</div>
+                        <div className="text-xl font-black text-cyber-green mt-1">K{metrics.netExpectedPay.toLocaleString()}</div>
                       </div>
                     </div>
 

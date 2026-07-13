@@ -491,10 +491,12 @@ export default function DashboardTab({
                         <span className="text-slate-500">Missed Day Deductions:</span>
                         <span className="font-bold text-cyber-red">K-{(payroll.deductions - payroll.lateDeduction).toFixed(2)} ({Math.max(0, 26 - payroll.daysWorked)} days)</span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">Late Attendance Deductions (K20/day):</span>
-                        <span className="font-bold text-cyber-red">K-{payroll.lateDeduction.toFixed(2)} ({Math.round(payroll.lateDeduction / 20)} days)</span>
-                      </div>
+                      {payroll.lateDeduction > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Late Attendance Deductions (K20/day):</span>
+                          <span className="font-bold text-cyber-red">K-{payroll.lateDeduction.toFixed(2)} ({Math.round(payroll.lateDeduction / 20)} days)</span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
                         <span className="text-slate-500">On-Time Perfect Bonus:</span>
                         <span className="font-bold text-cyber-green">K{payroll.attendanceBonus} (On-time: {payroll.onTimeDays}/26 days)</span>

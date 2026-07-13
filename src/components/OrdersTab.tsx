@@ -47,6 +47,8 @@ export default function OrdersTab() {
     ? allOrders.filter(o => o.gamer_id === gamerProfile.id)
     : allOrders;
 
+  const isManager = role === 'admin' || (role === 'gamer' && gamerProfile?.gamer_role === 'technical_manager');
+
   // Filter gamers list in Select dropdown
   const filteredGamersForSelect = gamers.filter(g => 
     g.name.toLowerCase().includes(gamerSearchQuery.toLowerCase()) ||
@@ -62,7 +64,7 @@ export default function OrdersTab() {
 
   // Set default deployment date on form open
   const openNewOrderForm = () => {
-    if (role !== 'admin') return;
+    if (!isManager) return;
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     
@@ -82,7 +84,7 @@ export default function OrdersTab() {
   };
 
   const openEditOrderForm = (order: Order) => {
-    if (role !== 'admin') return;
+    if (!isManager) return;
     setIsEditing(order);
     setOrderNumber(order.order_number);
     setGamerId(order.gamer_id);
@@ -99,7 +101,7 @@ export default function OrdersTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (role !== 'admin') return;
+    if (!isManager) return;
     if (!orderNumber.trim()) {
       setFormError('Order Number is required.');
       return;
@@ -157,7 +159,7 @@ export default function OrdersTab() {
   };
 
   const handleDelete = async (id: string) => {
-    if (role !== 'admin') return;
+    if (!isManager) return;
     if (confirm('Are you sure you want to terminate this order log?')) {
       const res = await deleteOrder(id);
       if (!res.success) {
@@ -240,22 +242,25 @@ export default function OrdersTab() {
             <option value="Violation">Violation</option>
           </select>
 
-          {/* Gamer Filter (Only shown to Admin) */}
-          {role === 'admin' && (
+          {/* Gamer Filter (Shown to Admin & Technical Manager) */}
+          {isManager && (
             <select 
               value={gamerFilter} 
               onChange={(e) => setGamerFilter(e.target.value)}
               className="bg-cyber-dark border border-cyber-border rounded px-3 py-2 text-slate-300 focus:outline-none focus:border-cyber-cyan cursor-pointer max-w-[150px]"
             >
               <option value="All">All Gamers</option>
-              {gamers.map(g => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
+              {gamers
+                .filter(g => g.gamer_role !== 'technical_manager')
+                .map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))
+              }
             </select>
           )}
 
-          {/* Deploy buttons (Only shown to Admin) */}
-          {role === 'admin' && (
+          {/* Deploy buttons (Shown to Admin & Technical Manager) */}
+          {isManager && (
             gamers.length === 0 ? (
               <button 
                 disabled 
@@ -276,8 +281,8 @@ export default function OrdersTab() {
         </div>
       </div>
 
-      {/* Deploy/Edit Order Dialog Overlay (Only admin) */}
-      {isFormOpen && role === 'admin' && (
+      {/* Deploy/Edit Order Dialog Overlay (Admin & Technical Manager) */}
+      {isFormOpen && isManager && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="tactical-panel p-6 rounded clip-corners border border-cyber-cyan/40 w-full max-w-lg relative">
             <div className="hud-grid"></div>
@@ -326,9 +331,12 @@ export default function OrdersTab() {
                     className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer"
                   >
                     <option value="" disabled>Select active gamer...</option>
-                    {filteredGamersForSelect.map(g => (
-                      <option key={g.id} value={g.id}>{g.name} (ID: {g.employee_id})</option>
-                    ))}
+                    {filteredGamersForSelect
+                      .filter(g => g.gamer_role !== 'technical_manager')
+                      .map(g => (
+                        <option key={g.id} value={g.id}>{g.name} (ID: {g.employee_id})</option>
+                      ))
+                    }
                   </select>
                 </div>
               </div>
@@ -454,7 +462,7 @@ export default function OrdersTab() {
                   >
                     Order Code {sortBy === 'order_number' && (sortDirection === 'asc' ? '▲' : '▼')}
                   </th>
-                  {role === 'admin' && <th className="p-3">Gamer Details</th>}
+                  {isManager && <th className="p-3">Gamer Details</th>}
                   <th 
                     className="p-3 text-right cursor-pointer hover:text-cyber-cyan transition-colors"
                     onClick={() => toggleSort('size')}
@@ -474,7 +482,7 @@ export default function OrdersTab() {
                     Deployed On {sortBy === 'date' && (sortDirection === 'asc' ? '▲' : '▼')}
                   </th>
                   <th className="p-3">Status</th>
-                  {role === 'admin' && <th className="p-3 text-center">Operational Shifts</th>}
+                  {isManager && <th className="p-3 text-center">Operational Shifts</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-cyber-border/30">
@@ -484,7 +492,7 @@ export default function OrdersTab() {
                   return (
                     <tr key={order.id} className="hover:bg-slate-900/30 transition-colors">
                       <td className="p-3 text-cyber-cyan font-bold">{order.order_number}</td>
-                      {role === 'admin' && (
+                      {isManager && (
                         <td className="p-3">
                           <div className="font-bold text-slate-300">{assignedGamer ? assignedGamer.name : 'Unknown Gamer'}</div>
                           <div className="text-[10px] text-slate-500">{assignedGamer ? `ID: ${assignedGamer.employee_id}` : ''}</div>
@@ -514,7 +522,7 @@ export default function OrdersTab() {
                           {order.status}
                         </span>
                       </td>
-                      {role === 'admin' && (
+                      {isManager && (
                         <td className="p-3">
                           <div className="flex items-center justify-center gap-1.5">
                             {/* Quick Transitions */}
