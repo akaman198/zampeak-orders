@@ -388,7 +388,7 @@ export default function DashboardTab({
             
             {/* Card 1: Payout Summary */}
             {(() => {
-              if (isManager) {
+              if (role === 'admin') {
                 const activeOperators = gamers.filter(g => g.status === 'active' && g.gamer_role !== 'technical_manager');
               const allPayrolls = activeOperators.map(g => calculatePayroll(g.id, selectedCycle));
               const centralExpectedPayout = allPayrolls.reduce((sum, p) => sum + p.totalPay, 0);
@@ -442,7 +442,7 @@ export default function DashboardTab({
 
             {/* Card 2: List (Depending on Role) */}
             <div className="lg:col-span-3 border border-cyber-border/20 rounded p-4 bg-slate-950/40">
-              {isManager ? (
+              {role === 'admin' ? (
                 // Admin View: Breakdown per Gamer
               <div className="space-y-2">
                 <div className="font-mono text-[10px] text-slate-400 uppercase tracking-wider pb-1.5 border-b border-cyber-border/20">Operational Payroll Ledger</div>
