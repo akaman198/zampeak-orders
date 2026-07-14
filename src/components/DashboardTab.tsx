@@ -355,8 +355,7 @@ export default function DashboardTab({
       </div>
 
       {/* Expected Payroll Calculator Section */}
-      {gamerProfile?.gamer_role !== 'technical_manager' && (
-        <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 space-y-4">
+      <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 space-y-4">
         <div className="hud-grid"></div>
         
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-cyber-border/40 pb-3 gap-3">
@@ -524,7 +523,6 @@ export default function DashboardTab({
           </div>
         </div>
       </div>
-      )}
 
       {/* Main Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
