@@ -281,71 +281,71 @@ export default function Home() {
           </div>
 
           {/* Tab Navigation & Log Out */}
-          <div className="flex items-center gap-3">
-            <nav className="flex items-center gap-1 bg-slate-950/80 p-1 rounded border border-cyber-border">
+          <div className="flex items-center gap-2 md:gap-3 justify-center md:justify-end w-full md:w-auto">
+            <nav className="flex items-center gap-1 bg-slate-950/80 p-1 rounded border border-cyber-border overflow-x-auto max-w-[calc(100vw-110px)] md:max-w-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               <button 
                 onClick={() => setActiveTab('dashboard')}
-                className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer shrink-0 ${
                   activeTab === 'dashboard' 
                     ? 'bg-cyber-cyan text-slate-950 shadow-neon-cyan/25' 
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
                 }`}
               >
-                <LayoutDashboard size={12} />
-                Dashboard
+                <LayoutDashboard size={12} className="shrink-0" />
+                <span className="hidden lg:inline">Dashboard</span>
               </button>
               
               {role === 'admin' && (
                 <button 
                   onClick={() => setActiveTab('gamers')}
-                  className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer shrink-0 ${
                     activeTab === 'gamers' 
                       ? 'bg-cyber-cyan text-slate-950 shadow-neon-cyan/25' 
                       : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
                   }`}
                 >
-                  <Users size={12} />
-                  Gamers
+                  <Users size={12} className="shrink-0" />
+                  <span className="hidden lg:inline">Gamers</span>
                 </button>
               )}
 
               {role === 'admin' && (
                 <button 
                   onClick={() => setActiveTab('attendance')}
-                  className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer shrink-0 ${
                     activeTab === 'attendance' 
                       ? 'bg-cyber-cyan text-slate-950 shadow-neon-cyan/25' 
                       : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
                   }`}
                 >
-                  <Calendar size={12} />
-                  Attendance
+                  <Calendar size={12} className="shrink-0" />
+                  <span className="hidden lg:inline">Attendance</span>
                 </button>
               )}
 
               <button 
                 onClick={() => setActiveTab('orders')}
-                className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer shrink-0 ${
                   activeTab === 'orders' 
                     ? 'bg-cyber-cyan text-slate-950 shadow-neon-cyan/25' 
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
                 }`}
               >
-                <Gamepad2 size={12} />
-                Orders
+                <Gamepad2 size={12} className="shrink-0" />
+                <span className="hidden lg:inline">Orders</span>
               </button>
 
               {role === 'admin' && (
                 <button 
                   onClick={() => setActiveTab('reports')}
-                  className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer shrink-0 ${
                     activeTab === 'reports' 
                       ? 'bg-cyber-cyan text-slate-950 shadow-neon-cyan/25' 
                       : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
                   }`}
                 >
-                  <FileBarChart2 size={12} />
-                  Reports
+                  <FileBarChart2 size={12} className="shrink-0" />
+                  <span className="hidden lg:inline">Reports</span>
                 </button>
               )}
             </nav>
@@ -354,18 +354,18 @@ export default function Home() {
             <button 
               onClick={() => setIsChangePasswordOpen(true)}
               title="Change Password Access Key"
-              className="p-2 border border-cyber-border hover:border-cyber-cyan rounded bg-slate-950 hover:bg-cyber-cyan/10 text-slate-400 hover:text-cyber-cyan transition-all cursor-pointer"
+              className="p-2 border border-cyber-border hover:border-cyber-cyan rounded bg-slate-950 hover:bg-cyber-cyan/10 text-slate-400 hover:text-cyber-cyan transition-all cursor-pointer shrink-0"
             >
-              <Key size={14} />
+              <Key size={14} className="shrink-0" />
             </button>
 
             {/* Log Out Button */}
             <button 
               onClick={signOut}
               title="Log Out Terminal"
-              className="p-2 border border-cyber-border hover:border-cyber-red rounded bg-slate-950 hover:bg-cyber-red/10 text-slate-400 hover:text-cyber-red transition-all cursor-pointer"
+              className="p-2 border border-cyber-border hover:border-cyber-red rounded bg-slate-950 hover:bg-cyber-red/10 text-slate-400 hover:text-cyber-red transition-all cursor-pointer shrink-0"
             >
-              <LogOut size={14} />
+              <LogOut size={14} className="shrink-0" />
             </button>
           </div>
         </div>
