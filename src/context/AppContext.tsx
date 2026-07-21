@@ -88,7 +88,7 @@ const getEmailFromInput = (input: string): string => {
   return `${trimmed.toLowerCase()}@gamers.zampeak.com`;
 };
 
-export const getPayPeriodLabel = (dateStr: string) => {
+export const getAttendancePeriodLabel = (dateStr: string) => {
   if (!dateStr) return '';
   const normalizedStr = dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`;
   const date = new Date(normalizedStr);
@@ -110,6 +110,31 @@ export const getPayPeriodLabel = (dateStr: string) => {
   ];
   return `${monthNames[month]} 15, ${year}`;
 };
+
+export const getOrderPeriodLabel = (dateStr: string) => {
+  if (!dateStr) return '';
+  const normalizedStr = dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`;
+  const date = new Date(normalizedStr);
+  let year = date.getFullYear();
+  let month = date.getMonth(); // 0-indexed
+  const day = date.getDate();
+
+  if (day >= 15) {
+    month += 1;
+    if (month > 11) {
+      month = 0;
+      year += 1;
+    }
+  }
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  return `${monthNames[month]} 15, ${year}`;
+};
+
+export const getPayPeriodLabel = getAttendancePeriodLabel;
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -824,7 +849,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // 2. Filter Attendance in Cycle
     const cycleAttendance = attendance.filter(
-      (a) => a.gamer_id === gamerId && getPayPeriodLabel(a.date) === cycleLabel
+      (a) => a.gamer_id === gamerId && getAttendancePeriodLabel(a.date) === cycleLabel
     );
 
     const daysWorked = cycleAttendance.filter(
@@ -849,7 +874,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // 5. Order payout bonuses
     const completedOrders = orders.filter(
-      (o) => o.gamer_id === gamerId && o.status === 'Completed' && getPayPeriodLabel(o.start_date) === cycleLabel
+      (o) => o.gamer_id === gamerId && o.status === 'Completed' && getOrderPeriodLabel(o.start_date) === cycleLabel
     );
     const orderBonus = completedOrders.reduce((sum, o) => sum + o.payout, 0);
 
@@ -861,7 +886,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       // Find completed orders for this cycle by team members or leader
       const teamOrders = orders.filter(
-        (o) => o.status === 'Completed' && teamGamerIds.includes(o.gamer_id) && getPayPeriodLabel(o.start_date) === cycleLabel
+        (o) => o.status === 'Completed' && teamGamerIds.includes(o.gamer_id) && getOrderPeriodLabel(o.start_date) === cycleLabel
       );
 
       // Group by daily local date string

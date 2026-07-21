@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp, getPayPeriodLabel, getOrderPeriodLabel } from '../context/AppContext';
 import { 
   Shield, 
   Gamepad2, 
@@ -29,29 +29,7 @@ export default function DashboardTab({
     ? allOrders.filter(o => o.gamer_id === gamerProfile.id)
     : allOrders;
 
-  // Helper to calculate pay period label from a date string
-  const getPayPeriodLabel = (dateStr: string) => {
-    if (!dateStr) return '';
-    const normalizedStr = dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`;
-    const date = new Date(normalizedStr);
-    let year = date.getFullYear();
-    let month = date.getMonth(); // 0-indexed
-    const day = date.getDate();
 
-    if (day >= 16) {
-      month += 1;
-      if (month > 11) {
-        month = 0;
-        year += 1;
-      }
-    }
-
-    const monthNames = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    return `${monthNames[month]} 15, ${year}`;
-  };
 
   // Generate list of cycles
   const getAvailablePayCycles = () => {
@@ -106,7 +84,7 @@ export default function DashboardTab({
       prevYear -= 1;
     }
 
-    return `Cycle period: ${monthNames[prevMonthIndex]} 16, ${prevYear} to ${parts[0]} 15, ${year}`;
+    return `Orders: ${monthNames[prevMonthIndex]} 15 - ${parts[0]} 14 | Attendance: ${monthNames[prevMonthIndex]} 16 - ${parts[0]} 15, ${year}`;
   };
 
   const availableCycles = getAvailablePayCycles();
@@ -117,7 +95,7 @@ export default function DashboardTab({
 
   const getOrdersInCycle = (cycleLabel: string) => {
     const completedOrders = orders.filter(o => o.status === 'Completed');
-    return completedOrders.filter(o => getPayPeriodLabel(o.start_date) === cycleLabel);
+    return completedOrders.filter(o => getOrderPeriodLabel(o.start_date) === cycleLabel);
   };
 
   // Group/Team calculations for the cycle
@@ -127,7 +105,7 @@ export default function DashboardTab({
     const members = gamers.filter(g => g.team_leader_id === tl.id);
     const teamIds = [tl.id, ...members.map(m => m.id)];
     const teamOrders = allOrders.filter(
-      o => o.status === 'Completed' && teamIds.includes(o.gamer_id) && getPayPeriodLabel(o.start_date) === selectedCycle
+      o => o.status === 'Completed' && teamIds.includes(o.gamer_id) && getOrderPeriodLabel(o.start_date) === selectedCycle
     );
     const totalAssets = teamOrders.reduce((sum, o) => sum + Number(o.size_millions), 0);
     const totalPayout = teamOrders.reduce((sum, o) => sum + Number(o.payout), 0);
@@ -158,7 +136,7 @@ export default function DashboardTab({
 
   // Gamers rankings (Assets Farmed in Millions during this cycle)
   const cycleOrders = allOrders.filter(
-    o => o.status === 'Completed' && getPayPeriodLabel(o.start_date) === selectedCycle
+    o => o.status === 'Completed' && getOrderPeriodLabel(o.start_date) === selectedCycle
   );
   const gamerFarmedStats = gamers
     .map(g => {

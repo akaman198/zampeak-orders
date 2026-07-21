@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { useApp, getPayPeriodLabel } from '../context/AppContext';
+import { useApp, getPayPeriodLabel, getOrderPeriodLabel } from '../context/AppContext';
 import { 
   FileSpreadsheet, 
   Printer, 
@@ -97,7 +97,7 @@ export default function ReportsTab() {
   
   // Completed order stats for cycle
   const cycleOrders = orders.filter(
-    o => o.status === 'Completed' && getPayPeriodLabel(o.start_date) === selectedCycle
+    o => o.status === 'Completed' && getOrderPeriodLabel(o.start_date) === selectedCycle
   );
   const totalCompletedMissions = cycleOrders.length;
   const totalAssetsFarmedAll = cycleOrders.reduce((sum, o) => sum + Number(o.size_millions), 0);
