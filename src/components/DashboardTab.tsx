@@ -38,7 +38,7 @@ export default function DashboardTab({
     let month = date.getMonth(); // 0-indexed
     const day = date.getDate();
 
-    if (day >= 15) {
+    if (day >= 16) {
       month += 1;
       if (month > 11) {
         month = 0;
@@ -106,7 +106,7 @@ export default function DashboardTab({
       prevYear -= 1;
     }
 
-    return `Cycle period: ${monthNames[prevMonthIndex]} 15, ${prevYear} to ${parts[0]} 14, ${year}`;
+    return `Cycle period: ${monthNames[prevMonthIndex]} 16, ${prevYear} to ${parts[0]} 15, ${year}`;
   };
 
   const availableCycles = getAvailablePayCycles();

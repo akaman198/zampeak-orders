@@ -76,7 +76,7 @@ export default function ReportsTab() {
       prevYear -= 1;
     }
 
-    return `Cycle period: ${monthNames[prevMonthIndex]} 15, ${prevYear} to ${parts[0]} 14, ${year}`;
+    return `Cycle period: ${monthNames[prevMonthIndex]} 16, ${prevYear} to ${parts[0]} 15, ${year}`;
   };
 
   const availableCycles = getAvailablePayCycles();

@@ -96,7 +96,7 @@ export const getPayPeriodLabel = (dateStr: string) => {
   let month = date.getMonth(); // 0-indexed
   const day = date.getDate();
 
-  if (day >= 15) {
+  if (day >= 16) {
     month += 1;
     if (month > 11) {
       month = 0;
