@@ -120,7 +120,7 @@ export default function Home() {
   // Authentication Required Screen (Login)
   if (!user) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-cyber-bg min-h-screen p-4 relative overflow-hidden font-mono">
+      <div className="flex-1 flex flex-col items-center justify-center bg-cyber-bg min-h-screen p-4 relative overflow-y-auto font-mono">
         <div className="absolute inset-0 bg-cyber-grid pointer-events-none"></div>
         
         <div className="absolute w-96 h-96 rounded-full bg-cyber-cyan/5 blur-3xl -top-20 -left-20"></div>
