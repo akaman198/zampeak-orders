@@ -30,6 +30,12 @@ export default function AttendanceTab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'gamer' | 'team_leader' | 'technical_manager'>('all');
   const [saveStatus, setSaveStatus] = useState<{ [gamerId: string]: 'saving' | 'success' | 'error' }>({});
+  const [localFarmed, setLocalFarmed] = useState<{ [gamerId: string]: string }>({});
+
+  const handleDateChange = (date: string) => {
+    setSelectedDate(date);
+    setLocalFarmed({});
+  };
 
   // Ensure only admin/Technical Manager (via UI checks) can see this
   if (role !== 'admin') {
@@ -50,9 +56,17 @@ export default function AttendanceTab() {
     return record?.status || null; // null means unmarked
   };
 
-  const handleMarkAttendance = async (gamerId: string, status: AttendanceStatus) => {
+  const getGamerFarmedForDate = (gamerId: string) => {
+    if (localFarmed[gamerId] !== undefined) {
+      return localFarmed[gamerId];
+    }
+    const record = attendance.find(a => a.gamer_id === gamerId && a.date === selectedDate);
+    return record?.farmed_millions !== undefined ? String(record.farmed_millions) : '';
+  };
+
+  const handleMarkAttendance = async (gamerId: string, status: AttendanceStatus, farmedMillions?: number) => {
     setSaveStatus(prev => ({ ...prev, [gamerId]: 'saving' }));
-    const res = await saveAttendance(gamerId, selectedDate, status);
+    const res = await saveAttendance(gamerId, selectedDate, status, farmedMillions);
     if (res.success) {
       setSaveStatus(prev => ({ ...prev, [gamerId]: 'success' }));
       setTimeout(() => {
@@ -73,8 +87,10 @@ export default function AttendanceTab() {
     if (confirm(`Are you sure you want to mark all filtered operators Present (On-time) for ${selectedDate}?`)) {
       for (const gamer of filteredGamers) {
         const currentStatus = getGamerStatusForDate(gamer.id);
+        const currentFarmedStr = getGamerFarmedForDate(gamer.id);
+        const currentFarmed = parseFloat(currentFarmedStr) || 0;
         if (currentStatus !== 'present_on_time') {
-          await saveAttendance(gamer.id, selectedDate, 'present_on_time');
+          await saveAttendance(gamer.id, selectedDate, 'present_on_time', currentFarmed);
         }
       }
     }
@@ -129,7 +145,7 @@ export default function AttendanceTab() {
             <input 
               type="date" 
               value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
+              onChange={(e) => handleDateChange(e.target.value)}
               className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan text-center font-bold"
             />
           </div>
@@ -285,6 +301,7 @@ export default function AttendanceTab() {
                   <th className="py-3 px-3">Operator Dossier</th>
                   <th className="py-3 px-3">Clearance ID</th>
                   <th className="py-3 px-3">Role / Level</th>
+                  <th className="py-3 px-3 w-40">Farmed Today (Millions)</th>
                   <th className="py-3 px-3 text-center w-80">Mark Attendance Status</th>
                 </tr>
               </thead>
@@ -320,6 +337,42 @@ export default function AttendanceTab() {
                             <span className="text-slate-500 capitalize">{gamer.level}</span>
                           )}
                         </div>
+                      </td>
+                      <td className="py-3.5 px-3">
+                        {gamer.gamer_role !== 'technical_manager' ? (
+                          <div className="flex items-center gap-1.5 font-mono">
+                            <input 
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={getGamerFarmedForDate(gamer.id)}
+                              onChange={(e) => {
+                                setLocalFarmed(prev => ({ ...prev, [gamer.id]: e.target.value }));
+                              }}
+                              onBlur={() => {
+                                const valStr = localFarmed[gamer.id];
+                                if (valStr === undefined) return;
+                                const val = parseFloat(valStr) || 0;
+                                handleMarkAttendance(gamer.id, currentStatus || 'present_on_time', val);
+                                setLocalFarmed(prev => {
+                                  const next = { ...prev };
+                                  delete next[gamer.id];
+                                  return next;
+                                });
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                              placeholder="0"
+                              className="w-24 bg-slate-950 border border-cyber-border/40 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-cyber-cyan text-right text-xs"
+                            />
+                            <span className="text-[10px] text-slate-500 font-bold uppercase">M</span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-600 font-mono text-[10px] uppercase">N/A</span>
+                        )}
                       </td>
                       <td className="py-3.5 px-3">
                         <div className="flex items-center justify-center gap-2">

@@ -72,7 +72,7 @@ interface AppContextType {
   ) => Promise<{ success: boolean; error?: string }>;
   deleteOrder: (id: string) => Promise<{ success: boolean; error?: string }>;
   updateOrderStatus: (id: string, status: OrderStatus) => Promise<{ success: boolean; error?: string }>;
-  saveAttendance: (gamerId: string, date: string, status: AttendanceStatus) => Promise<{ success: boolean; error?: string }>;
+  saveAttendance: (gamerId: string, date: string, status: AttendanceStatus, farmedMillions?: number) => Promise<{ success: boolean; error?: string }>;
   calculatePayroll: (gamerId: string, cycleLabel: string) => PayrollSummary;
   importBackupData: (gamers: Gamer[], orders: Order[], attendance?: AttendanceRecord[]) => Promise<{ success: boolean; error?: string }>;
   refreshData: () => Promise<void>;
@@ -764,13 +764,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const saveAttendance = async (gamerId: string, date: string, status: AttendanceStatus) => {
+  const saveAttendance = async (gamerId: string, date: string, status: AttendanceStatus, farmedMillions?: number) => {
+    const existingRecord = attendance.find(a => a.gamer_id === gamerId && a.date === date);
+    const finalStatus = status;
+    const finalFarmedMillions = farmedMillions !== undefined ? farmedMillions : (existingRecord?.farmed_millions || 0);
+
     const newRecord: AttendanceRecord = {
-      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11),
+      id: existingRecord?.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11)),
       gamer_id: gamerId,
       date,
-      status,
-      created_at: new Date().toISOString(),
+      status: finalStatus,
+      farmed_millions: finalFarmedMillions,
+      created_at: existingRecord?.created_at || new Date().toISOString(),
     };
 
     if (!isDemo && supabase) {
@@ -780,7 +785,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           .upsert({
             gamer_id: gamerId,
             date,
-            status,
+            status: finalStatus,
+            farmed_millions: finalFarmedMillions,
             created_at: new Date().toISOString()
           }, { onConflict: 'gamer_id,date' })
           .select();
@@ -884,20 +890,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const teamMembers = gamers.filter((g) => g.team_leader_id === gamerId);
       const teamGamerIds = [gamerId, ...teamMembers.map((m) => m.id)];
 
-      // Find completed orders for this cycle by team members or leader
-      const teamOrders = orders.filter(
-        (o) => o.status === 'Completed' && teamGamerIds.includes(o.gamer_id) && getOrderPeriodLabel(o.start_date) === cycleLabel
+      // Find attendance records for these team members or leader in this cycle
+      const teamAttendance = attendance.filter(
+        (a) => teamGamerIds.includes(a.gamer_id) && getAttendancePeriodLabel(a.date) === cycleLabel
       );
 
-      // Group by daily local date string
+      // Group by daily local date string and sum farmed_millions
       const dailyTotals: { [dateStr: string]: number } = {};
-      teamOrders.forEach((o) => {
-        const d = new Date(o.start_date);
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        const dateStr = `${yyyy}-${mm}-${dd}`;
-        dailyTotals[dateStr] = (dailyTotals[dateStr] || 0) + Number(o.size_millions);
+      teamAttendance.forEach((a) => {
+        dailyTotals[a.date] = (dailyTotals[a.date] || 0) + Number(a.farmed_millions || 0);
       });
 
       // Calculate bonuses: K10 for every 10 Million above 50 Million

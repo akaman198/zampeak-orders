@@ -284,6 +284,7 @@ CREATE TABLE public.attendance (
     gamer_id UUID REFERENCES public.gamers(id) ON DELETE CASCADE NOT NULL,
     date DATE NOT NULL,
     status TEXT NOT NULL,
+    farmed_millions NUMERIC NOT NULL DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     UNIQUE(gamer_id, date)
 );

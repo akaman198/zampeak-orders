@@ -23,6 +23,7 @@ export interface AttendanceRecord {
   gamer_id: string;
   date: string; // YYYY-MM-DD
   status: AttendanceStatus;
+  farmed_millions: number;
   created_at: string;
 }
 
