@@ -80,6 +80,68 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+const safeSessionStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        return sessionStorage.getItem(key);
+      }
+    } catch (e) {
+      console.warn('sessionStorage is blocked or unavailable:', e);
+    }
+    return null;
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        sessionStorage.setItem(key, value);
+      }
+    } catch (e) {
+      console.warn('sessionStorage setItem is blocked or unavailable:', e);
+    }
+  },
+  removeItem: (key: string): void => {
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        sessionStorage.removeItem(key);
+      }
+    } catch (e) {
+      console.warn('sessionStorage removeItem is blocked or unavailable:', e);
+    }
+  }
+};
+
+const safeLocalStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        return localStorage.getItem(key);
+      }
+    } catch (e) {
+      console.warn('localStorage is blocked or unavailable:', e);
+    }
+    return null;
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem(key, value);
+      }
+    } catch (e) {
+      console.warn('localStorage setItem is blocked or unavailable:', e);
+    }
+  },
+  removeItem: (key: string): void => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.removeItem(key);
+      }
+    } catch (e) {
+      console.warn('localStorage removeItem is blocked or unavailable:', e);
+    }
+  }
+};
+
 const getEmailFromInput = (input: string): string => {
   const trimmed = input.trim();
   if (trimmed.includes('@')) {
@@ -181,7 +243,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const checkLocalSession = () => {
-    const sessionUser = sessionStorage.getItem('zampeak_user');
+    const sessionUser = safeSessionStorage.getItem('zampeak_user');
     if (sessionUser) {
       try {
         setUser(JSON.parse(sessionUser));
@@ -259,9 +321,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const loadLocalStorage = () => {
-    const savedGamers = localStorage.getItem('zampeak_gamers');
-    const savedOrders = localStorage.getItem('zampeak_orders');
-    const savedAttendance = localStorage.getItem('zampeak_attendance');
+    const savedGamers = safeLocalStorage.getItem('zampeak_gamers');
+    const savedOrders = safeLocalStorage.getItem('zampeak_orders');
+    const savedAttendance = safeLocalStorage.getItem('zampeak_attendance');
 
     if (savedGamers && savedOrders) {
       setGamers(JSON.parse(savedGamers));
@@ -271,9 +333,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setGamers([]);
       setOrders([]);
       setAttendance([]);
-      localStorage.setItem('zampeak_gamers', JSON.stringify([]));
-      localStorage.setItem('zampeak_orders', JSON.stringify([]));
-      localStorage.setItem('zampeak_attendance', JSON.stringify([]));
+      safeLocalStorage.setItem('zampeak_gamers', JSON.stringify([]));
+      safeLocalStorage.setItem('zampeak_orders', JSON.stringify([]));
+      safeLocalStorage.setItem('zampeak_attendance', JSON.stringify([]));
     }
   };
 
@@ -301,17 +363,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (loginEmail === 'admin@zampeak.com' && password === 'admin123') {
         const mockUser = { id: 'demo-user-id', email: loginEmail } as User;
         setUser(mockUser);
-        sessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
+        safeSessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
         return { success: true };
       } else {
-        const savedGamers = localStorage.getItem('zampeak_gamers');
+        const savedGamers = safeLocalStorage.getItem('zampeak_gamers');
         if (savedGamers) {
           const localGamers: Gamer[] = JSON.parse(savedGamers);
           const matched = localGamers.find(g => g.email?.toLowerCase() === loginEmail.toLowerCase());
           if (matched && password === (matched.default_password || 'gamer123')) {
             const mockUser = { id: matched.id, email: loginEmail } as User;
             setUser(mockUser);
-            sessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
+            safeSessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
             return { success: true };
           }
         }
@@ -344,7 +406,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return { success: false, error: `Database validation error: ${err.message}` };
         }
       } else {
-        const savedGamers = localStorage.getItem('zampeak_gamers');
+        const savedGamers = safeLocalStorage.getItem('zampeak_gamers');
         let matchedGamer: Gamer | undefined = undefined;
         if (savedGamers) {
           const localGamers: Gamer[] = JSON.parse(savedGamers);
@@ -384,13 +446,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       const mockUser = { id: Math.random().toString(), email: signupEmail } as User;
       setUser(mockUser);
-      sessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
+      safeSessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
 
       // Clear local default password
       const empId = emailOrEmpId.trim().toUpperCase();
       const updatedGamers = gamers.map(g => g.employee_id === empId ? { ...g, default_password: '' } : g);
       setGamers(updatedGamers);
-      localStorage.setItem('zampeak_gamers', JSON.stringify(updatedGamers));
+      safeLocalStorage.setItem('zampeak_gamers', JSON.stringify(updatedGamers));
 
       return { success: true };
     }
@@ -404,7 +466,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         console.error('Logout error:', err);
       }
     } else {
-      sessionStorage.removeItem('zampeak_user');
+      safeSessionStorage.removeItem('zampeak_user');
     }
     setUser(null);
   };
@@ -426,7 +488,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (role === 'gamer' && gamerProfile) {
         const updated = gamers.map(g => g.id === gamerProfile.id ? { ...g, default_password: '' } : g);
         setGamers(updated);
-        localStorage.setItem('zampeak_gamers', JSON.stringify(updated));
+        safeLocalStorage.setItem('zampeak_gamers', JSON.stringify(updated));
       }
       return { success: true };
     }
@@ -521,7 +583,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
       const updated = [newGamer, ...gamers];
       setGamers(updated);
-      localStorage.setItem('zampeak_gamers', JSON.stringify(updated));
+      safeLocalStorage.setItem('zampeak_gamers', JSON.stringify(updated));
       return { success: true };
     }
   };
@@ -583,7 +645,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : g
       );
       setGamers(updated);
-      localStorage.setItem('zampeak_gamers', JSON.stringify(updated));
+      safeLocalStorage.setItem('zampeak_gamers', JSON.stringify(updated));
       return { success: true };
     }
   };
@@ -618,7 +680,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       const updated = gamers.filter((g) => g.id !== id);
       setGamers(updated);
-      localStorage.setItem('zampeak_gamers', JSON.stringify(updated));
+      safeLocalStorage.setItem('zampeak_gamers', JSON.stringify(updated));
       return { success: true };
     }
   };
@@ -661,7 +723,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       const updated = [newOrder, ...orders];
       setOrders(updated);
-      localStorage.setItem('zampeak_orders', JSON.stringify(updated));
+      safeLocalStorage.setItem('zampeak_orders', JSON.stringify(updated));
       return { success: true };
     }
   };
@@ -718,7 +780,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : o
       );
       setOrders(updated);
-      localStorage.setItem('zampeak_orders', JSON.stringify(updated));
+      safeLocalStorage.setItem('zampeak_orders', JSON.stringify(updated));
       return { success: true };
     }
   };
@@ -737,7 +799,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       const updated = orders.filter((o) => o.id !== id);
       setOrders(updated);
-      localStorage.setItem('zampeak_orders', JSON.stringify(updated));
+      safeLocalStorage.setItem('zampeak_orders', JSON.stringify(updated));
       return { success: true };
     }
   };
@@ -759,7 +821,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       const updated = orders.map((o) => (o.id === id ? { ...o, status } : o));
       setOrders(updated);
-      localStorage.setItem('zampeak_orders', JSON.stringify(updated));
+      safeLocalStorage.setItem('zampeak_orders', JSON.stringify(updated));
       return { success: true };
     }
   };
@@ -809,7 +871,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAttendance((prev) => {
         const filtered = prev.filter((a) => !(a.gamer_id === gamerId && a.date === date));
         const updated = [newRecord, ...filtered];
-        localStorage.setItem('zampeak_attendance', JSON.stringify(updated));
+        safeLocalStorage.setItem('zampeak_attendance', JSON.stringify(updated));
         return updated;
       });
       return { success: true };
@@ -963,9 +1025,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setGamers(newGamers);
       setOrders(newOrders);
       setAttendance(newAttendance || []);
-      localStorage.setItem('zampeak_gamers', JSON.stringify(newGamers));
-      localStorage.setItem('zampeak_orders', JSON.stringify(newOrders));
-      localStorage.setItem('zampeak_attendance', JSON.stringify(newAttendance || []));
+      safeLocalStorage.setItem('zampeak_gamers', JSON.stringify(newGamers));
+      safeLocalStorage.setItem('zampeak_orders', JSON.stringify(newOrders));
+      safeLocalStorage.setItem('zampeak_attendance', JSON.stringify(newAttendance || []));
       return { success: true };
     }
   };
