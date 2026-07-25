@@ -42,6 +42,11 @@ export default function ReportsTab() {
       }
     });
 
+    // Add cycles from attendance records
+    attendance.forEach(a => {
+      cyclesSet.add(getPayPeriodLabel(a.date));
+    });
+
     const monthNames = [
       'January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December'
@@ -114,35 +119,20 @@ export default function ReportsTab() {
       bonus: number;
     }[] = [];
 
-    // Group completed cycle orders by date and team leader
-    const dayGroups: { [dateStr: string]: { [leaderId: string]: number } } = {};
+    const activeLeaders = gamers.filter(g => g.gamer_role === 'team_leader' && g.status === 'active');
+    
+    // Find attendance records for the selected cycle
+    const cycleAttendance = attendance.filter(a => getPayPeriodLabel(a.date) === selectedCycle);
+    const uniqueDates = Array.from(new Set(cycleAttendance.map(a => a.date))).sort().reverse();
 
-    cycleOrders.forEach(o => {
-      const d = new Date(o.start_date);
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      const dateStr = `${yyyy}-${mm}-${dd}`;
+    uniqueDates.forEach(dateStr => {
+      activeLeaders.forEach(leader => {
+        const teamMembers = gamers.filter(g => g.team_leader_id === leader.id || g.id === leader.id);
+        const teamMemberIds = teamMembers.map(m => m.id);
 
-      const gamer = gamers.find(g => g.id === o.gamer_id);
-      if (!gamer) return;
+        const dailyAttendance = cycleAttendance.filter(a => a.date === dateStr && teamMemberIds.includes(a.gamer_id));
+        const volume = dailyAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
 
-      // Find the team leader ID for this gamer (if they are a gamer, get team_leader_id. If they are a leader, get their own ID).
-      const leaderId = gamer.gamer_role === 'team_leader' ? gamer.id : gamer.team_leader_id;
-      if (!leaderId) return; // Unassigned gamers do not belong to any team
-
-      if (!dayGroups[dateStr]) dayGroups[dateStr] = {};
-      dayGroups[dateStr][leaderId] = (dayGroups[dateStr][leaderId] || 0) + Number(o.size_millions);
-    });
-
-    // Format results and calculate daily bonus
-    Object.keys(dayGroups).sort().reverse().forEach(dateStr => {
-      const leaders = dayGroups[dateStr];
-      Object.keys(leaders).forEach(leaderId => {
-        const leader = gamers.find(g => g.id === leaderId);
-        if (!leader) return;
-
-        const volume = leaders[leaderId];
         let bonus = 0;
         if (volume > 50) {
           const over = volume - 50;
