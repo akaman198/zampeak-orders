@@ -105,7 +105,8 @@ export default function ReportsTab() {
     o => o.status === 'Completed' && getOrderPeriodLabel(o.start_date) === selectedCycle
   );
   const totalCompletedMissions = cycleOrders.length;
-  const totalAssetsFarmedAll = cycleOrders.reduce((sum, o) => sum + Number(o.size_millions), 0);
+  const cycleAttendance = attendance.filter(a => getPayPeriodLabel(a.date) === selectedCycle);
+  const totalAssetsFarmedAll = cycleAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
   const totalOrderPayout = cycleOrders.reduce((sum, o) => sum + Number(o.payout), 0);
   const totalTeamVolumeBonus = payrollSummaries.reduce((sum, p) => sum + p.teamVolumeBonus, 0);
   const totalPayAll = payrollSummaries.reduce((sum, p) => sum + p.totalPay, 0);

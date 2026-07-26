@@ -20,7 +20,7 @@ export default function DashboardTab({
 }: { 
   onNavigate: (tab: 'dashboard' | 'gamers' | 'orders' | 'reports') => void 
 }) {
-  const { orders: allOrders, gamers, updateOrderStatus, role, gamerProfile, isDemo, user, calculatePayroll } = useApp();
+  const { orders: allOrders, gamers, attendance, updateOrderStatus, role, gamerProfile, isDemo, user, calculatePayroll } = useApp();
 
   const isManager = role === 'admin' || (role === 'gamer' && gamerProfile?.gamer_role === 'technical_manager');
 
@@ -48,6 +48,11 @@ export default function DashboardTab({
       if (o.status === 'Completed') {
         cyclesSet.add(getPayPeriodLabel(o.start_date));
       }
+    });
+
+    // Add cycles from attendance records
+    attendance.forEach(a => {
+      cyclesSet.add(getPayPeriodLabel(a.date));
     });
 
     const monthNames = [
@@ -104,10 +109,16 @@ export default function DashboardTab({
   const teamSummaries = teamLeaders.map(tl => {
     const members = gamers.filter(g => g.team_leader_id === tl.id);
     const teamIds = [tl.id, ...members.map(m => m.id)];
+    
+    // Sum attendance logs for team farmed assets
+    const teamAttendance = attendance.filter(
+      a => teamIds.includes(a.gamer_id) && getPayPeriodLabel(a.date) === selectedCycle
+    );
+    const totalAssets = teamAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
+
     const teamOrders = allOrders.filter(
       o => o.status === 'Completed' && teamIds.includes(o.gamer_id) && getOrderPeriodLabel(o.start_date) === selectedCycle
     );
-    const totalAssets = teamOrders.reduce((sum, o) => sum + Number(o.size_millions), 0);
     const totalPayout = teamOrders.reduce((sum, o) => sum + Number(o.payout), 0);
 
     return {
@@ -120,8 +131,10 @@ export default function DashboardTab({
       totalPayout,
       gamerDetails: teamIds.map(id => {
         const g = gamers.find(gam => gam.id === id)!;
+        const gAttendance = teamAttendance.filter(a => a.gamer_id === id);
+        const assets = gAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
+        
         const gOrders = teamOrders.filter(o => o.gamer_id === id);
-        const assets = gOrders.reduce((sum, o) => sum + Number(o.size_millions), 0);
         const payout = gOrders.reduce((sum, o) => sum + Number(o.payout), 0);
         return {
           gamerId: id,
@@ -135,13 +148,13 @@ export default function DashboardTab({
   });
 
   // Gamers rankings (Assets Farmed in Millions during this cycle)
-  const cycleOrders = allOrders.filter(
-    o => o.status === 'Completed' && getOrderPeriodLabel(o.start_date) === selectedCycle
+  const cycleAttendance = attendance.filter(
+    a => getPayPeriodLabel(a.date) === selectedCycle
   );
   const gamerFarmedStats = gamers
     .map(g => {
-      const gOrders = cycleOrders.filter(o => o.gamer_id === g.id);
-      const farmed = gOrders.reduce((sum, o) => sum + Number(o.size_millions), 0);
+      const gAttendance = cycleAttendance.filter(a => a.gamer_id === g.id);
+      const farmed = gAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
       return { gamer: g, farmed };
     })
     .filter(g => g.farmed > 0)
