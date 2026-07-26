@@ -698,6 +698,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const defaultPayout = sizeMillions;
     const finalPayout = payoutOverride !== undefined ? payoutOverride : defaultPayout;
 
+    const todayDateStr = () => {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    };
+    const completedDate = status === 'Completed' ? todayDateStr() : undefined;
+
     const newOrder: Order = {
       id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11),
       order_number: orderNumber,
@@ -707,6 +716,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       start_date: startDate || new Date().toISOString(),
       status,
       payout: finalPayout,
+      completed_date: completedDate,
       created_at: new Date().toISOString(),
     };
 
@@ -741,6 +751,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const defaultPayout = sizeMillions;
     const finalPayout = payoutOverride !== undefined ? payoutOverride : defaultPayout;
 
+    const existing = orders.find(o => o.id === id);
+    const todayDateStr = () => {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    };
+    const completedDate = status === 'Completed' 
+      ? (existing?.completed_date || todayDateStr()) 
+      : undefined;
+
     if (!isDemo && supabase) {
       try {
         const updates = {
@@ -751,13 +773,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
           start_date: startDate,
           status,
           payout: finalPayout,
+          completed_date: completedDate || null
         };
 
         const { error } = await supabase.from('orders').update(updates).eq('id', id);
         if (error) throw error;
 
         setOrders((prev) =>
-          prev.map((o) => (o.id === id ? { ...o, ...updates } : o))
+          prev.map((o) => (o.id === id ? { ...o, ...updates, completed_date: completedDate || undefined } : o))
         );
         return { success: true };
       } catch (err: any) {
@@ -776,6 +799,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               start_date: startDate,
               status,
               payout: finalPayout,
+              completed_date: completedDate || undefined
             }
           : o
       );
@@ -805,13 +829,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const updateOrderStatus = async (id: string, status: OrderStatus) => {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const todayDateStr = `${yyyy}-${mm}-${dd}`;
+    const completedDate = status === 'Completed' ? todayDateStr : null;
+
     if (!isDemo && supabase) {
       try {
-        const { error } = await supabase.from('orders').update({ status }).eq('id', id);
+        const { error } = await supabase
+          .from('orders')
+          .update({ status, completed_date: completedDate })
+          .eq('id', id);
         if (error) throw error;
 
         setOrders((prev) =>
-          prev.map((o) => (o.id === id ? { ...o, status } : o))
+          prev.map((o) => (o.id === id ? { ...o, status, completed_date: completedDate || undefined } : o))
         );
         return { success: true };
       } catch (err: any) {
@@ -819,7 +853,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { success: false, error: err.message };
       }
     } else {
-      const updated = orders.map((o) => (o.id === id ? { ...o, status } : o));
+      const updated = orders.map((o) => (o.id === id ? { ...o, status, completed_date: completedDate || undefined } : o));
       setOrders(updated);
       safeLocalStorage.setItem('zampeak_orders', JSON.stringify(updated));
       return { success: true };
@@ -942,7 +976,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // 5. Order payout bonuses
     const completedOrders = orders.filter(
-      (o) => o.gamer_id === gamerId && o.status === 'Completed' && getOrderPeriodLabel(o.start_date) === cycleLabel
+      (o) => o.gamer_id === gamerId && o.status === 'Completed' && getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel
     );
     const orderBonus = completedOrders.reduce((sum, o) => sum + o.payout, 0);
 

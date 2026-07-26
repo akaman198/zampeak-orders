@@ -11,9 +11,15 @@ import {
   Play,
   Pause,
   CheckCircle,
-  Clock
+  Clock,
+  XCircle
 } from 'lucide-react';
 import { OrderStatus } from '../types';
+
+const formatM = (val: number) => {
+  if (val % 1 === 0) return String(val);
+  return val.toFixed(1);
+};
 
 export default function DashboardTab({ 
   onNavigate 
@@ -100,7 +106,7 @@ export default function DashboardTab({
 
   const getOrdersInCycle = (cycleLabel: string) => {
     const completedOrders = orders.filter(o => o.status === 'Completed');
-    return completedOrders.filter(o => getOrderPeriodLabel(o.start_date) === cycleLabel);
+    return completedOrders.filter(o => getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel);
   };
 
   // Group/Team calculations for the cycle
@@ -117,7 +123,7 @@ export default function DashboardTab({
     const totalAssets = teamAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
 
     const teamOrders = allOrders.filter(
-      o => o.status === 'Completed' && teamIds.includes(o.gamer_id) && getOrderPeriodLabel(o.start_date) === selectedCycle
+      o => o.status === 'Completed' && teamIds.includes(o.gamer_id) && getOrderPeriodLabel(o.completed_date || o.start_date) === selectedCycle
     );
     const totalPayout = teamOrders.reduce((sum, o) => sum + Number(o.payout), 0);
 
@@ -662,7 +668,7 @@ export default function DashboardTab({
                               </span>
                               <span className="font-bold text-slate-200 text-[11px]">{item.gamer.name}</span>
                             </div>
-                            <span className="text-cyber-green font-bold text-[11px]">{item.farmed}M</span>
+                            <span className="text-cyber-green font-bold text-[11px]">{formatM(item.farmed)}M</span>
                           </div>
                           <div className="w-full bg-slate-950/80 h-2.5 rounded border border-cyber-border/40 overflow-hidden relative">
                             <div 
@@ -712,7 +718,7 @@ export default function DashboardTab({
                               </span>
                               <span className="font-bold text-slate-200 text-[11px]">Team {item.leaderName.split(' ')[0]}</span>
                             </div>
-                            <span className="text-cyber-cyan font-bold text-[11px]">{item.totalAssetsFarmed}M</span>
+                            <span className="text-cyber-cyan font-bold text-[11px]">{formatM(item.totalAssetsFarmed)}M</span>
                           </div>
                           <div className="w-full bg-slate-950/80 h-2.5 rounded border border-cyber-border/40 overflow-hidden relative">
                             <div 
@@ -770,7 +776,7 @@ export default function DashboardTab({
                               </span>
                               <span className="font-bold text-slate-200 text-[11px]">{item.gamer.name}</span>
                             </div>
-                            <span className="text-cyber-green font-bold text-[11px]">{item.farmed}M</span>
+                            <span className="text-cyber-green font-bold text-[11px]">{formatM(item.farmed)}M</span>
                           </div>
                           <div className="w-full bg-slate-950/80 h-2.5 rounded border border-cyber-border/40 overflow-hidden relative">
                             <div 
@@ -820,7 +826,7 @@ export default function DashboardTab({
                               </span>
                               <span className="font-bold text-slate-200 text-[11px]">Team {item.leaderName.split(' ')[0]}</span>
                             </div>
-                            <span className="text-cyber-cyan font-bold text-[11px]">{item.totalAssetsFarmed}M</span>
+                            <span className="text-cyber-cyan font-bold text-[11px]">{formatM(item.totalAssetsFarmed)}M</span>
                           </div>
                           <div className="w-full bg-slate-950/80 h-2.5 rounded border border-cyber-border/40 overflow-hidden relative">
                             <div 
@@ -864,7 +870,7 @@ export default function DashboardTab({
                   </div>
                   <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30">
                     <div className="text-[8px] text-slate-500 uppercase tracking-widest text-cyber-green">Team Total Farmed</div>
-                    <div className="text-lg font-bold text-cyber-green mt-1">{myTeamSummary.totalAssetsFarmed}M Coins</div>
+                    <div className="text-lg font-bold text-cyber-green mt-1">{formatM(myTeamSummary.totalAssetsFarmed)}M Coins</div>
                   </div>
                   <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30">
                     <div className="text-[8px] text-slate-500 uppercase tracking-widest text-cyber-cyan">Team Total Payout</div>
@@ -887,7 +893,7 @@ export default function DashboardTab({
                         <tr key={member.gamerId} className="hover:bg-slate-900/40 transition-all">
                           <td className="py-2.5 px-3 font-bold">{member.gamerName} {member.gamerId === gamerProfile.id && "(You)"}</td>
                           <td className="py-2.5 px-3 text-slate-400 font-mono">{member.employeeId}</td>
-                          <td className="py-2.5 px-3 text-right font-bold">{member.assetsFarmed}M</td>
+                          <td className="py-2.5 px-3 text-right font-bold">{formatM(member.assetsFarmed)}M</td>
                           <td className="py-2.5 px-3 text-right font-bold text-cyber-green">K{member.payout.toLocaleString()}</td>
                         </tr>
                       ))}
@@ -939,7 +945,7 @@ export default function DashboardTab({
                         </td>
                       )}
                       <td className="p-3 text-right text-slate-300 font-bold">
-                        {order.size_millions}M
+                        {formatM(order.size_millions)}M
                         <span className="text-[9px] text-slate-500 font-normal block">{order.asset_type || 'Haval Coins'}</span>
                       </td>
                       <td className="p-3 text-right text-cyber-green font-bold">K{order.payout}</td>
@@ -952,6 +958,7 @@ export default function DashboardTab({
                           order.status === 'Completed' ? 'bg-cyber-green/10 text-cyber-green border border-cyber-green/30' :
                           order.status === 'Paused' ? 'bg-cyber-amber/10 text-cyber-amber border border-cyber-amber/30' :
                           order.status === 'Violation' ? 'bg-cyber-red/10 text-cyber-red border border-cyber-red/30' :
+                          order.status === 'Cancelled' ? 'bg-slate-700/20 text-slate-400 border border-slate-600/30' :
                           'bg-slate-700/10 text-slate-400 border border-slate-600/30'
                         }`}>
                           {order.status}
@@ -983,6 +990,15 @@ export default function DashboardTab({
                                 >
                                   <AlertTriangle size={12} />
                                 </button>
+                                {role === 'admin' && (
+                                  <button 
+                                    onClick={() => handleQuickStatus(order.id, 'Cancelled')}
+                                    title="Cancel Order"
+                                    className="p-1 hover:bg-slate-700/20 rounded border border-slate-600/30 text-slate-400 transition-colors"
+                                  >
+                                    <XCircle size={12} />
+                                  </button>
+                                )}
                               </>
                             )}
                             {order.status === 'Paused' && (
@@ -1001,6 +1017,15 @@ export default function DashboardTab({
                                 >
                                   <CheckCircle size={12} />
                                 </button>
+                                {role === 'admin' && (
+                                  <button 
+                                    onClick={() => handleQuickStatus(order.id, 'Cancelled')}
+                                    title="Cancel Order"
+                                    className="p-1 hover:bg-slate-700/20 rounded border border-slate-600/30 text-slate-400 transition-colors"
+                                  >
+                                    <XCircle size={12} />
+                                  </button>
+                                )}
                               </>
                             )}
                             {order.status !== 'Running' && order.status !== 'Paused' && (

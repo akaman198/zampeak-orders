@@ -14,6 +14,11 @@ import {
   Check
 } from 'lucide-react';
 
+const formatM = (val: number) => {
+  if (val % 1 === 0) return String(val);
+  return val.toFixed(1);
+};
+
 export default function ReportsTab() {
   const { gamers, orders, attendance, importBackupData, isDemo, calculatePayroll } = useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -266,6 +271,7 @@ CREATE TABLE public.orders (
     start_date TIMESTAMP WITH TIME ZONE NOT NULL,
     status TEXT NOT NULL DEFAULT 'Running',
     payout NUMERIC NOT NULL,
+    completed_date DATE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -449,7 +455,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                 <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30">
                   <span className="text-[9px] text-slate-500 uppercase font-mono">Total Farmed Value</span>
                   <div className="text-lg font-bold text-slate-200 font-mono mt-0.5">
-                    {totalAssetsFarmedAll}M assets
+                    {formatM(totalAssetsFarmedAll)}M assets
                   </div>
                 </div>
                 <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30">
@@ -488,7 +494,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                           <tr key={idx} className="hover:bg-slate-900/40 font-mono">
                             <td className="py-2.5 px-3">{rec.date}</td>
                             <td className="py-2.5 px-3 font-bold">{rec.teamLeaderName}</td>
-                            <td className="py-2.5 px-3 text-right font-bold">{rec.volume}M Assets</td>
+                            <td className="py-2.5 px-3 text-right font-bold">{formatM(rec.volume)}M Assets</td>
                             <td className="py-2.5 px-3 text-right font-bold text-cyber-green">K{rec.bonus}</td>
                             <td className="py-2.5 px-3">
                               <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${

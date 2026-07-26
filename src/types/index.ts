@@ -36,6 +36,7 @@ export interface Order {
   start_date: string;
   status: OrderStatus;
   payout: number;
+  completed_date?: string;
   created_at: string;
 }
 

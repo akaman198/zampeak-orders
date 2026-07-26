@@ -15,6 +15,11 @@ import {
   ShieldCheck
 } from 'lucide-react';
 
+const formatM = (val: number) => {
+  if (val % 1 === 0) return String(val);
+  return val.toFixed(1);
+};
+
 export default function GamersTab() {
   const { gamers, orders, addGamer, updateGamer, deleteGamer, resetGamerPassword, calculatePayroll } = useApp();
 
@@ -715,7 +720,7 @@ export default function GamersTab() {
                               {metrics.orders.map(order => (
                                 <tr key={order.id} className="hover:bg-slate-900/40">
                                   <td className="py-2.5 font-bold text-cyber-cyan">{order.order_number}</td>
-                                  <td className="py-2.5 text-right font-bold">{order.size_millions}M ({order.asset_type === 'Haval Coins' ? 'Haval' : 'Assets'})</td>
+                                  <td className="py-2.5 text-right font-bold">{formatM(order.size_millions)}M ({order.asset_type === 'Haval Coins' ? 'Haval' : 'Assets'})</td>
                                   <td className="py-2.5 text-right text-cyber-green font-bold">K{order.payout}</td>
                                   <td className="py-2.5 text-slate-400">
                                     {new Date(order.start_date).toLocaleDateString()}

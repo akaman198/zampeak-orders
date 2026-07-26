@@ -13,8 +13,14 @@ import {
   Play,
   Pause,
   CheckCircle,
-  AlertTriangle
+  AlertTriangle,
+  XCircle
 } from 'lucide-react';
+
+const formatM = (val: number) => {
+  if (val % 1 === 0) return String(val);
+  return val.toFixed(1);
+};
 
 export default function OrdersTab() {
   const { orders: allOrders, gamers, addOrder, updateOrder, deleteOrder, updateOrderStatus, role, gamerProfile } = useApp();
@@ -410,7 +416,7 @@ export default function OrdersTab() {
                     <option value="Running">Running</option>
                     <option value="Paused">Paused</option>
                     <option value="Completed">Completed</option>
-                    <option value="Cancelled">Cancelled</option>
+                    {role === 'admin' && <option value="Cancelled">Cancelled</option>}
                     <option value="Violation">Violation</option>
                   </select>
                 </div>
@@ -523,7 +529,7 @@ export default function OrdersTab() {
                             </td>
                           )}
                           <td className="p-3 text-right font-bold text-slate-300">
-                            {order.size_millions}M
+                            {formatM(order.size_millions)}M
                             <span className="text-[9px] text-slate-500 font-normal block">{order.asset_type || 'Haval Coins'}</span>
                           </td>
                           <td className="p-3 text-right font-bold text-cyber-green">
@@ -541,6 +547,7 @@ export default function OrdersTab() {
                               order.status === 'Completed' ? 'bg-cyber-green/15 text-cyber-green border border-cyber-green/30' :
                               order.status === 'Paused' ? 'bg-cyber-amber/15 text-cyber-amber border border-cyber-amber/30' :
                               order.status === 'Violation' ? 'bg-cyber-red/15 text-cyber-red border border-cyber-red/30' :
+                              order.status === 'Cancelled' ? 'bg-slate-700/20 text-slate-400 border border-slate-600/30' :
                               'bg-slate-700/15 text-slate-400 border border-slate-600/30'
                             }`}>
                               {order.status}
@@ -579,6 +586,15 @@ export default function OrdersTab() {
                                   >
                                     <AlertTriangle size={10} />
                                   </button>
+                                  {role === 'admin' && (
+                                    <button 
+                                      onClick={() => updateOrderStatus(order.id, 'Cancelled')}
+                                      title="Set Cancelled"
+                                      className={`p-1 rounded transition-colors ${order.status === 'Cancelled' ? 'bg-slate-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-500'}`}
+                                    >
+                                      <XCircle size={10} />
+                                    </button>
+                                  )}
                                 </div>
 
                                 {/* Full Edit / Delete */}
