@@ -167,6 +167,49 @@ export default function DashboardTab({
     .sort((a, b) => b.totalAssetsFarmed - a.totalAssetsFarmed)
     .slice(0, 4);
 
+  // Weekly performance calculations (Last 7 Days)
+  const getWeeklyDateRange = () => {
+    const dates: string[] = [];
+    const now = new Date();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      dates.push(`${yyyy}-${mm}-${dd}`);
+    }
+    return dates;
+  };
+  
+  const weeklyDates = getWeeklyDateRange();
+  const weeklyAttendance = attendance.filter(a => weeklyDates.includes(a.date));
+  
+  const weeklyGamerStats = gamers
+    .map(g => {
+      const gAttendance = weeklyAttendance.filter(a => a.gamer_id === g.id);
+      const farmed = gAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
+      return { gamer: g, farmed };
+    })
+    .filter(g => g.farmed > 0)
+    .sort((a, b) => b.farmed - a.farmed)
+    .slice(0, 4);
+
+  const weeklyTeamStats = teamLeaders
+    .map(tl => {
+      const members = gamers.filter(g => g.team_leader_id === tl.id);
+      const teamIds = [tl.id, ...members.map(m => m.id)];
+      const teamAttendance = weeklyAttendance.filter(a => teamIds.includes(a.gamer_id));
+      const farmed = teamAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
+      return {
+        leaderId: tl.id,
+        leaderName: tl.name,
+        totalAssetsFarmed: farmed
+      };
+    })
+    .filter(t => t.totalAssetsFarmed > 0)
+    .sort((a, b) => b.totalAssetsFarmed - a.totalAssetsFarmed)
+    .slice(0, 4);
+
   // 1. Calculations
   const totalOrders = orders.length;
   const completedOrders = orders.filter(o => o.status === 'Completed').length;
@@ -579,106 +622,222 @@ export default function DashboardTab({
 
         {/* Center Widget: Gamer & Team Rankings (Only shown to Admin) */}
         {role === 'admin' && (
-          <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-8">
             
-            {/* Gamers Leaderboard */}
-            <div>
-              <h3 className="font-mono font-bold text-sm text-slate-300 uppercase tracking-widest border-b border-cyber-border/40 pb-2 mb-4 flex justify-between items-center">
-                <span>Best Performing Gamers</span>
-                <span className="text-xs text-cyber-cyan font-mono cursor-pointer hover:underline" onClick={() => onNavigate('gamers')}>View Dossiers</span>
+            {/* COLUMN 1: Weekly Performance (Last 7 Days) */}
+            <div className="space-y-6">
+              <h3 className="font-mono font-bold text-xs text-cyber-cyan uppercase tracking-widest border-b border-cyber-border/40 pb-2 mb-2 flex justify-between items-center bg-cyber-cyan/5 px-2 py-1 rounded border border-cyber-cyan/20">
+                <span>Weekly Leaderboard</span>
+                <span className="text-[10px] text-slate-400 font-normal lowercase select-none">last 7 days</span>
               </h3>
 
-              {gamerFarmedStats.length === 0 ? (
-                <div className="h-48 flex items-center justify-center font-mono text-slate-500 text-xs">
-                  NO ACTIVE DIVISION RECORDS DETECTED
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {gamerFarmedStats.map((item, idx) => {
-                    const maxFarmed = Math.max(...gamerFarmedStats.map(g => g.farmed)) || 1;
-                    const widthPercent = Math.max(15, Math.round((item.farmed / maxFarmed) * 100));
+              {/* Weekly Gamers */}
+              <div className="space-y-3">
+                <h4 className="font-mono font-bold text-[10.5px] text-slate-300 uppercase tracking-widest flex justify-between items-center">
+                  <span>Top Gamers (Weekly)</span>
+                  <span className="text-[9px] text-slate-500 font-normal">Individual</span>
+                </h4>
 
-                    return (
-                      <div key={item.gamer.id} className="space-y-1">
-                        <div className="flex justify-between items-center font-mono text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold border ${
-                              idx === 0 ? 'bg-cyber-cyan/20 border-cyber-cyan text-cyber-cyan' :
-                              idx === 1 ? 'bg-cyber-green/20 border-cyber-green text-cyber-green' :
-                              idx === 2 ? 'bg-cyber-amber/20 border-cyber-amber text-cyber-amber' :
-                              'bg-slate-900 border-slate-700 text-slate-400'
-                            }`}>
-                              {idx + 1}
-                            </span>
-                            <span className="font-bold text-slate-200">{item.gamer.name}</span>
+                {weeklyGamerStats.length === 0 ? (
+                  <div className="py-4 text-center font-mono text-slate-600 text-[10px]">
+                    NO ACTIVE WEEKLY RECORDS LOGGED
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {weeklyGamerStats.map((item, idx) => {
+                      const maxFarmed = Math.max(...weeklyGamerStats.map(g => g.farmed)) || 1;
+                      const widthPercent = Math.max(15, Math.round((item.farmed / maxFarmed) * 100));
+
+                      return (
+                        <div key={item.gamer.id} className="space-y-1">
+                          <div className="flex justify-between items-center font-mono text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className={`h-4.5 w-4.5 rounded-full flex items-center justify-center text-[9px] font-bold border ${
+                                idx === 0 ? 'bg-cyber-cyan/20 border-cyber-cyan text-cyber-cyan' :
+                                idx === 1 ? 'bg-cyber-green/20 border-cyber-green text-cyber-green' :
+                                idx === 2 ? 'bg-cyber-amber/20 border-cyber-amber text-cyber-amber' :
+                                'bg-slate-900 border-slate-700 text-slate-400'
+                              }`}>
+                                {idx + 1}
+                              </span>
+                              <span className="font-bold text-slate-200 text-[11px]">{item.gamer.name}</span>
+                            </div>
+                            <span className="text-cyber-green font-bold text-[11px]">{item.farmed}M</span>
                           </div>
-                          <span className="text-cyber-green font-bold">{item.farmed}M Farmed</span>
+                          <div className="w-full bg-slate-950/80 h-2.5 rounded border border-cyber-border/40 overflow-hidden relative">
+                            <div 
+                              className={`h-full transition-all duration-1000 ease-out ${
+                                idx === 0 ? 'bg-cyber-cyan' :
+                                idx === 1 ? 'bg-cyber-green' :
+                                'bg-slate-700'
+                              }`} 
+                              style={{ width: `${widthPercent}%` }}
+                            ></div>
+                          </div>
                         </div>
-                        <div className="w-full bg-slate-950/80 h-3 rounded border border-cyber-border/40 overflow-hidden relative">
-                          <div 
-                            className={`h-full transition-all duration-1000 ease-out ${
-                              idx === 0 ? 'bg-cyber-cyan' :
-                              idx === 1 ? 'bg-cyber-green' :
-                              'bg-slate-700'
-                            }`} 
-                            style={{ width: `${widthPercent}%` }}
-                          ></div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Weekly Teams */}
+              <div className="space-y-3 pt-2 border-t border-cyber-border/20">
+                <h4 className="font-mono font-bold text-[10.5px] text-slate-300 uppercase tracking-widest flex justify-between items-center">
+                  <span>Top Teams (Weekly)</span>
+                  <span className="text-[9px] text-slate-500 font-normal">Group Totals</span>
+                </h4>
+
+                {weeklyTeamStats.length === 0 ? (
+                  <div className="py-4 text-center font-mono text-slate-600 text-[10px]">
+                    NO ACTIVE WEEKLY TEAM VOLUME LOGGED
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {weeklyTeamStats.map((item, idx) => {
+                      const maxTeamFarmed = Math.max(...weeklyTeamStats.map(t => t.totalAssetsFarmed)) || 1;
+                      const widthPercent = Math.max(15, Math.round((item.totalAssetsFarmed / maxTeamFarmed) * 100));
+
+                      return (
+                        <div key={item.leaderId} className="space-y-1">
+                          <div className="flex justify-between items-center font-mono text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className={`h-4.5 w-4.5 rounded-full flex items-center justify-center text-[9px] font-bold border ${
+                                idx === 0 ? 'bg-cyber-cyan/20 border-cyber-cyan text-cyber-cyan' :
+                                idx === 1 ? 'bg-cyber-green/20 border-cyber-green text-cyber-green' :
+                                idx === 2 ? 'bg-cyber-amber/20 border-cyber-amber text-cyber-amber' :
+                                'bg-slate-900 border-slate-700 text-slate-400'
+                              }`}>
+                                {idx + 1}
+                              </span>
+                              <span className="font-bold text-slate-200 text-[11px]">Team {item.leaderName.split(' ')[0]}</span>
+                            </div>
+                            <span className="text-cyber-cyan font-bold text-[11px]">{item.totalAssetsFarmed}M</span>
+                          </div>
+                          <div className="w-full bg-slate-950/80 h-2.5 rounded border border-cyber-border/40 overflow-hidden relative">
+                            <div 
+                              className={`h-full transition-all duration-1000 ease-out ${
+                                idx === 0 ? 'bg-cyber-cyan' :
+                                idx === 1 ? 'bg-cyber-green' :
+                                'bg-slate-700'
+                              }`} 
+                              style={{ width: `${widthPercent}%` }}
+                            ></div>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Teams Leaderboard */}
-            <div>
-              <h3 className="font-mono font-bold text-sm text-slate-300 uppercase tracking-widest border-b border-cyber-border/40 pb-2 mb-4 flex justify-between items-center">
-                <span>Best Performing Teams</span>
-                <span className="text-[10px] text-slate-500 font-normal">Group Totals</span>
+            {/* COLUMN 2: Monthly Performance (Cycle) */}
+            <div className="space-y-6">
+              <h3 className="font-mono font-bold text-xs text-cyber-green uppercase tracking-widest border-b border-cyber-border/40 pb-2 mb-2 flex justify-between items-center bg-cyber-green/5 px-2 py-1 rounded border border-cyber-green/20">
+                <span>Monthly Leaderboard</span>
+                <span className="text-[10px] text-slate-400 font-normal lowercase select-none">cycle data</span>
               </h3>
 
-              {teamFarmedStats.length === 0 ? (
-                <div className="h-48 flex items-center justify-center font-mono text-slate-500 text-xs">
-                  NO ACTIVE TEAM VOLUME DETECTED
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {teamFarmedStats.map((item, idx) => {
-                    const maxTeamFarmed = Math.max(...teamFarmedStats.map(t => t.totalAssetsFarmed)) || 1;
-                    const widthPercent = Math.max(15, Math.round((item.totalAssetsFarmed / maxTeamFarmed) * 100));
+              {/* Monthly Gamers */}
+              <div className="space-y-3">
+                <h4 className="font-mono font-bold text-[10.5px] text-slate-300 uppercase tracking-widest flex justify-between items-center">
+                  <span>Top Gamers (Monthly)</span>
+                  <span className="text-xs text-cyber-cyan font-mono cursor-pointer hover:underline text-[9px]" onClick={() => onNavigate('gamers')}>View Dossiers</span>
+                </h4>
 
-                    return (
-                      <div key={item.leaderId} className="space-y-1">
-                        <div className="flex justify-between items-center font-mono text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold border ${
-                              idx === 0 ? 'bg-cyber-cyan/20 border-cyber-cyan text-cyber-cyan' :
-                              idx === 1 ? 'bg-cyber-green/20 border-cyber-green text-cyber-green' :
-                              idx === 2 ? 'bg-cyber-amber/20 border-cyber-amber text-cyber-amber' :
-                              'bg-slate-900 border-slate-700 text-slate-400'
-                            }`}>
-                              {idx + 1}
-                            </span>
-                            <span className="font-bold text-slate-200">Team {item.leaderName.split(' ')[0]}</span>
+                {gamerFarmedStats.length === 0 ? (
+                  <div className="py-4 text-center font-mono text-slate-600 text-[10px]">
+                    NO ACTIVE MONTHLY RECORDS LOGGED
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {gamerFarmedStats.map((item, idx) => {
+                      const maxFarmed = Math.max(...gamerFarmedStats.map(g => g.farmed)) || 1;
+                      const widthPercent = Math.max(15, Math.round((item.farmed / maxFarmed) * 100));
+
+                      return (
+                        <div key={item.gamer.id} className="space-y-1">
+                          <div className="flex justify-between items-center font-mono text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className={`h-4.5 w-4.5 rounded-full flex items-center justify-center text-[9px] font-bold border ${
+                                idx === 0 ? 'bg-cyber-cyan/20 border-cyber-cyan text-cyber-cyan' :
+                                idx === 1 ? 'bg-cyber-green/20 border-cyber-green text-cyber-green' :
+                                idx === 2 ? 'bg-cyber-amber/20 border-cyber-amber text-cyber-amber' :
+                                'bg-slate-900 border-slate-700 text-slate-400'
+                              }`}>
+                                {idx + 1}
+                              </span>
+                              <span className="font-bold text-slate-200 text-[11px]">{item.gamer.name}</span>
+                            </div>
+                            <span className="text-cyber-green font-bold text-[11px]">{item.farmed}M</span>
                           </div>
-                          <span className="text-cyber-cyan font-bold">{item.totalAssetsFarmed}M Farmed</span>
+                          <div className="w-full bg-slate-950/80 h-2.5 rounded border border-cyber-border/40 overflow-hidden relative">
+                            <div 
+                              className={`h-full transition-all duration-1000 ease-out ${
+                                idx === 0 ? 'bg-cyber-cyan' :
+                                idx === 1 ? 'bg-cyber-green' :
+                                'bg-slate-700'
+                              }`} 
+                              style={{ width: `${widthPercent}%` }}
+                            ></div>
+                          </div>
                         </div>
-                        <div className="w-full bg-slate-950/80 h-3 rounded border border-cyber-border/40 overflow-hidden relative">
-                          <div 
-                            className={`h-full transition-all duration-1000 ease-out ${
-                              idx === 0 ? 'bg-cyber-cyan' :
-                              idx === 1 ? 'bg-cyber-green' :
-                              'bg-slate-700'
-                            }`} 
-                            style={{ width: `${widthPercent}%` }}
-                          ></div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Monthly Teams */}
+              <div className="space-y-3 pt-2 border-t border-cyber-border/20">
+                <h4 className="font-mono font-bold text-[10.5px] text-slate-300 uppercase tracking-widest flex justify-between items-center">
+                  <span>Top Teams (Monthly)</span>
+                  <span className="text-[9px] text-slate-500 font-normal font-mono">Group Totals</span>
+                </h4>
+
+                {teamFarmedStats.length === 0 ? (
+                  <div className="py-4 text-center font-mono text-slate-600 text-[10px]">
+                    NO ACTIVE MONTHLY TEAM VOLUME LOGGED
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {teamFarmedStats.map((item, idx) => {
+                      const maxTeamFarmed = Math.max(...teamFarmedStats.map(t => t.totalAssetsFarmed)) || 1;
+                      const widthPercent = Math.max(15, Math.round((item.totalAssetsFarmed / maxTeamFarmed) * 100));
+
+                      return (
+                        <div key={item.leaderId} className="space-y-1">
+                          <div className="flex justify-between items-center font-mono text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className={`h-4.5 w-4.5 rounded-full flex items-center justify-center text-[9px] font-bold border ${
+                                idx === 0 ? 'bg-cyber-cyan/20 border-cyber-cyan text-cyber-cyan' :
+                                idx === 1 ? 'bg-cyber-green/20 border-cyber-green text-cyber-green' :
+                                idx === 2 ? 'bg-cyber-amber/20 border-cyber-amber text-cyber-amber' :
+                                'bg-slate-900 border-slate-700 text-slate-400'
+                              }`}>
+                                {idx + 1}
+                              </span>
+                              <span className="font-bold text-slate-200 text-[11px]">Team {item.leaderName.split(' ')[0]}</span>
+                            </div>
+                            <span className="text-cyber-cyan font-bold text-[11px]">{item.totalAssetsFarmed}M</span>
+                          </div>
+                          <div className="w-full bg-slate-950/80 h-2.5 rounded border border-cyber-border/40 overflow-hidden relative">
+                            <div 
+                              className={`h-full transition-all duration-1000 ease-out ${
+                                idx === 0 ? 'bg-cyber-cyan' :
+                                idx === 1 ? 'bg-cyber-green' :
+                                'bg-slate-700'
+                              }`} 
+                              style={{ width: `${widthPercent}%` }}
+                            ></div>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
 
           </div>
