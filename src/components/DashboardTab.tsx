@@ -52,7 +52,7 @@ export default function DashboardTab({
     // Add cycles from completed orders
     allOrders.forEach(o => {
       if (o.status === 'Completed') {
-        cyclesSet.add(getPayPeriodLabel(o.start_date));
+        cyclesSet.add(getOrderPeriodLabel(o.completed_date || o.start_date));
       }
     });
 

@@ -43,7 +43,7 @@ export default function ReportsTab() {
     // Add cycles from completed orders
     orders.forEach(o => {
       if (o.status === 'Completed') {
-        cyclesSet.add(getPayPeriodLabel(o.start_date));
+        cyclesSet.add(getOrderPeriodLabel(o.completed_date || o.start_date));
       }
     });
 
@@ -107,7 +107,7 @@ export default function ReportsTab() {
   
   // Completed order stats for cycle
   const cycleOrders = orders.filter(
-    o => o.status === 'Completed' && getOrderPeriodLabel(o.start_date) === selectedCycle
+    o => o.status === 'Completed' && getOrderPeriodLabel(o.completed_date || o.start_date) === selectedCycle
   );
   const totalCompletedMissions = cycleOrders.length;
   const cycleAttendance = attendance.filter(a => getPayPeriodLabel(a.date) === selectedCycle);
