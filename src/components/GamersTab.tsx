@@ -23,10 +23,12 @@ const formatM = (val: number) => {
 export default function GamersTab() {
   const { gamers, orders, addGamer, updateGamer, deleteGamer, resetGamerPassword, calculatePayroll, getDailyGamerEarnings } = useApp();
 
+  const todayStr = new Date().toISOString().slice(0, 10);
   // Component States
   const [selectedGamer, setSelectedGamer] = useState<Gamer | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [isEditing, setIsEditing] = useState<Gamer | null>(null);
+  const [dossierDailyDateFilter, setDossierDailyDateFilter] = useState<string>(todayStr);
 
   // Form Fields
   const [name, setName] = useState('');
@@ -746,61 +748,84 @@ export default function GamersTab() {
 
                     {/* Gamer Daily Earnings Breakdown */}
                     <div className="mt-6 pt-4 border-t border-cyber-border/30">
-                      <h4 className="font-mono font-bold text-xs uppercase tracking-wider text-cyber-cyan mb-3 flex justify-between items-center">
-                        <span>Daily Earnings Ledger (Current Cycle)</span>
-                        <span className="text-[9px] text-slate-500 font-normal lowercase bg-cyber-cyan/10 px-1.5 py-0.5 rounded border border-cyber-cyan/20">per-day pay audit</span>
-                      </h4>
-
                       {(() => {
                         const currentCycle = getPayPeriodLabel(new Date().toISOString());
-                        const gamerDailyLogs = getDailyGamerEarnings(currentCycle, selectedGamer.id);
-                        if (gamerDailyLogs.length === 0) {
-                          return (
-                            <div className="py-4 text-center text-slate-500 font-mono text-xs border border-dashed border-cyber-border/20 rounded">
-                              NO DAILY EARNINGS LOGGED IN THIS CYCLE YET.
-                            </div>
-                          );
-                        }
+                        const allGamerDailyLogs = getDailyGamerEarnings(currentCycle, selectedGamer.id);
+                        const availableDates = Array.from(new Set(allGamerDailyLogs.map(r => r.date))).sort().reverse();
+                        const filteredGamerDailyLogs = dossierDailyDateFilter === 'all'
+                          ? allGamerDailyLogs
+                          : allGamerDailyLogs.filter(r => r.date === dossierDailyDateFilter);
+
                         return (
-                          <div className="overflow-x-auto border border-cyber-border/30 rounded">
-                            <table className="w-full text-left font-mono text-[11px] border-collapse">
-                              <thead>
-                                <tr className="border-b border-cyber-border/40 text-slate-400 uppercase bg-slate-950/60 select-none">
-                                  <th className="py-2 px-2.5">Date</th>
-                                  <th className="py-2 px-2.5 text-right">Farmed (M)</th>
-                                  <th className="py-2 px-2.5 text-right">Base Earned</th>
-                                  <th className="py-2 px-2.5 text-center">Status</th>
-                                  <th className="py-2 px-2.5 text-right text-cyber-green">Orders Bonus</th>
-                                  <th className="py-2 px-2.5 text-right text-cyber-green">Team Bonus</th>
-                                  <th className="py-2 px-2.5 text-right text-cyber-cyan font-bold">Daily Total</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-cyber-border/20 text-slate-300">
-                                {gamerDailyLogs.map((r, i) => (
-                                  <tr key={i} className="hover:bg-slate-900/40 font-mono">
-                                    <td className="py-2 px-2.5 font-bold">{r.date}</td>
-                                    <td className="py-2 px-2.5 text-right font-bold text-slate-200">{formatM(r.farmedMillions)}M</td>
-                                    <td className="py-2 px-2.5 text-right">K{r.basePayEarned.toFixed(2)}</td>
-                                    <td className="py-2 px-2.5 text-center">
-                                      <span className={`px-1.5 py-0.2 rounded text-[8px] font-bold uppercase ${
-                                        r.attendanceStatus === 'present_on_time' ? 'bg-cyber-green/10 text-cyber-green border border-cyber-green/20' :
-                                        r.attendanceStatus === 'present_late' ? 'bg-cyber-amber/10 text-cyber-amber border border-cyber-amber/20' :
-                                        r.attendanceStatus === 'absent' ? 'bg-cyber-red/10 text-cyber-red border border-cyber-red/20' :
-                                        'bg-slate-800 text-slate-500'
-                                      }`}>
-                                        {r.attendanceStatus === 'present_on_time' ? 'On Time' :
-                                         r.attendanceStatus === 'present_late' ? 'Late' :
-                                         r.attendanceStatus === 'absent' ? 'Absent' : 'No Log'}
-                                      </span>
-                                    </td>
-                                    <td className="py-2 px-2.5 text-right text-cyber-green font-bold">K{r.orderBonus}</td>
-                                    <td className="py-2 px-2.5 text-right text-cyber-green font-bold">K{r.teamVolumeBonus}</td>
-                                    <td className="py-2 px-2.5 text-right text-cyber-cyan font-bold">K{r.totalDailyEarned.toFixed(2)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
+                          <>
+                            <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+                              <h4 className="font-mono font-bold text-xs uppercase tracking-wider text-cyber-cyan flex items-center gap-2">
+                                <span>Daily Earnings Ledger (Current Cycle)</span>
+                                <span className="text-[9px] text-slate-500 font-normal lowercase bg-cyber-cyan/10 px-1.5 py-0.5 rounded border border-cyber-cyan/20">per-day pay audit</span>
+                              </h4>
+
+                              <div className="flex items-center gap-2 font-mono text-[9px]">
+                                <span className="text-slate-400 uppercase font-bold">Filter Date:</span>
+                                <select
+                                  value={dossierDailyDateFilter}
+                                  onChange={(e) => setDossierDailyDateFilter(e.target.value)}
+                                  className="bg-slate-950 border border-cyber-border rounded px-2 py-0.5 text-cyber-cyan text-[9px] font-mono focus:outline-none focus:border-cyber-cyan cursor-pointer"
+                                >
+                                  <option value={todayStr}>Today ({todayStr})</option>
+                                  <option value="all">All Dates in Cycle</option>
+                                  {availableDates.filter(d => d !== todayStr).map(date => (
+                                    <option key={date} value={date}>{date}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+
+                            {filteredGamerDailyLogs.length === 0 ? (
+                              <div className="py-4 text-center text-slate-500 font-mono text-xs border border-dashed border-cyber-border/20 rounded">
+                                NO DAILY EARNINGS LOGGED FOR {dossierDailyDateFilter === 'all' ? 'THIS CYCLE' : dossierDailyDateFilter}.
+                              </div>
+                            ) : (
+                              <div className="overflow-x-auto border border-cyber-border/30 rounded max-h-48">
+                                <table className="w-full text-left font-mono text-[11px] border-collapse">
+                                  <thead>
+                                    <tr className="border-b border-cyber-border/40 text-slate-400 uppercase bg-slate-950/60 select-none sticky top-0">
+                                      <th className="py-2 px-2.5">Date</th>
+                                      <th className="py-2 px-2.5 text-right">Farmed (M)</th>
+                                      <th className="py-2 px-2.5 text-right">Base Earned</th>
+                                      <th className="py-2 px-2.5 text-center">Status</th>
+                                      <th className="py-2 px-2.5 text-right text-cyber-green">Orders Bonus</th>
+                                      <th className="py-2 px-2.5 text-right text-cyber-green">Team Bonus</th>
+                                      <th className="py-2 px-2.5 text-right text-cyber-cyan font-bold">Daily Total</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-cyber-border/20 text-slate-300">
+                                    {filteredGamerDailyLogs.map((r, i) => (
+                                      <tr key={i} className="hover:bg-slate-900/40 font-mono">
+                                        <td className="py-2 px-2.5 font-bold">{r.date}</td>
+                                        <td className="py-2 px-2.5 text-right font-bold text-slate-200">{formatM(r.farmedMillions)}M</td>
+                                        <td className="py-2 px-2.5 text-right">K{r.basePayEarned.toFixed(2)}</td>
+                                        <td className="py-2 px-2.5 text-center">
+                                          <span className={`px-1.5 py-0.2 rounded text-[8px] font-bold uppercase ${
+                                            r.attendanceStatus === 'present_on_time' ? 'bg-cyber-green/10 text-cyber-green border border-cyber-green/20' :
+                                            r.attendanceStatus === 'present_late' ? 'bg-cyber-amber/10 text-cyber-amber border border-cyber-amber/20' :
+                                            r.attendanceStatus === 'absent' ? 'bg-cyber-red/10 text-cyber-red border border-cyber-red/20' :
+                                            'bg-slate-800 text-slate-500'
+                                          }`}>
+                                            {r.attendanceStatus === 'present_on_time' ? 'On Time' :
+                                             r.attendanceStatus === 'present_late' ? 'Late' :
+                                             r.attendanceStatus === 'absent' ? 'Absent' : 'No Log'}
+                                          </span>
+                                        </td>
+                                        <td className="py-2 px-2.5 text-right text-cyber-green font-bold">K{r.orderBonus}</td>
+                                        <td className="py-2 px-2.5 text-right text-cyber-green font-bold">K{r.teamVolumeBonus}</td>
+                                        <td className="py-2 px-2.5 text-right text-cyber-cyan font-bold">K{r.totalDailyEarned.toFixed(2)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </>
                         );
                       })()}
                     </div>
