@@ -28,6 +28,7 @@ export default function ReportsTab() {
   const [copiedEnv, setCopiedEnv] = useState(false);
   const [importStatus, setImportStatus] = useState<{ success: boolean; message: string } | null>(null);
   const [selectedDailyDate, setSelectedDailyDate] = useState<string>(todayStr);
+  const [selectedTeamVolumeDate, setSelectedTeamVolumeDate] = useState<string>(todayStr);
 
   // Generate list of cycles
   const getAvailablePayCycles = () => {
@@ -162,6 +163,11 @@ export default function ReportsTab() {
   };
 
   const dailyTeamPerformance = getDailyTeamPerformance();
+  const availableTeamVolumeDates = Array.from(new Set(dailyTeamPerformance.map(r => r.date))).sort().reverse();
+  const filteredTeamPerformance = selectedTeamVolumeDate === 'all'
+    ? dailyTeamPerformance
+    : dailyTeamPerformance.filter(r => r.date === selectedTeamVolumeDate);
+
   const dailyGamerEarnings = getDailyGamerEarnings(selectedCycle);
   const availableDailyDates = Array.from(new Set(dailyGamerEarnings.map(r => r.date))).sort().reverse();
   const filteredDailyEarnings = selectedDailyDate === 'all' 
@@ -550,14 +556,32 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
 
               {/* Daily Team Performance Ledger Section */}
               <div className="mt-8 pt-6 border-t border-cyber-border/40">
-                <h3 className="font-mono font-bold text-sm text-cyber-cyan uppercase tracking-widest mb-4 flex justify-between items-center">
-                  <span>Daily Team Volume Ledger</span>
-                  <span className="text-[9px] text-slate-500 font-normal lowercase bg-cyber-cyan/10 px-1.5 py-0.5 rounded border border-cyber-cyan/20">real-time team tracker</span>
-                </h3>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+                  <h3 className="font-mono font-bold text-sm text-cyber-cyan uppercase tracking-widest flex items-center gap-2">
+                    <span>Daily Team Volume Ledger</span>
+                    <span className="text-[9px] text-slate-500 font-normal lowercase bg-cyber-cyan/10 px-1.5 py-0.5 rounded border border-cyber-cyan/20">real-time team tracker</span>
+                  </h3>
+
+                  {/* Date Filter Dropdown */}
+                  <div className="flex items-center gap-2 font-mono text-xs print:hidden">
+                    <span className="text-slate-400 text-[10px] uppercase font-bold">Filter Date:</span>
+                    <select
+                      value={selectedTeamVolumeDate}
+                      onChange={(e) => setSelectedTeamVolumeDate(e.target.value)}
+                      className="bg-slate-950 border border-cyber-border rounded px-2.5 py-1 text-cyber-cyan text-xs font-mono focus:outline-none focus:border-cyber-cyan cursor-pointer"
+                    >
+                      <option value={todayStr}>Today ({todayStr})</option>
+                      <option value="all">All Dates in Cycle</option>
+                      {availableTeamVolumeDates.filter(d => d !== todayStr).map(date => (
+                        <option key={date} value={date}>{date}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
                 
-                {dailyTeamPerformance.length === 0 ? (
+                {filteredTeamPerformance.length === 0 ? (
                   <div className="py-6 text-center text-slate-500 font-mono text-xs border border-dashed border-cyber-border/30 rounded">
-                    NO DAILY TEAM VOLUME DATA RECORDED FOR THIS CYCLE.
+                    NO DAILY TEAM VOLUME DATA RECORDED FOR {selectedTeamVolumeDate === 'all' ? 'THIS CYCLE' : selectedTeamVolumeDate}.
                   </div>
                 ) : (
                   <div className="overflow-x-auto border border-cyber-border/30 rounded">
@@ -572,7 +596,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-cyber-border/20 text-slate-300">
-                        {dailyTeamPerformance.map((rec, idx) => (
+                        {filteredTeamPerformance.map((rec, idx) => (
                           <tr key={idx} className="hover:bg-slate-900/40 font-mono">
                             <td className="py-2.5 px-3">{rec.date}</td>
                             <td className="py-2.5 px-3 font-bold">{rec.teamLeaderName}</td>
