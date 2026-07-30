@@ -103,3 +103,20 @@ export interface TeamSummary {
     payout: number;
   }[];
 }
+
+export interface DailyGamerEarnings {
+  date: string;
+  gamerId: string;
+  gamerName: string;
+  employeeId: string;
+  gamerRole: GamerRole;
+  level: GamerLevel;
+  farmedMillions: number;
+  attendanceStatus: AttendanceStatus | 'no_log';
+  basePayEarned: number;
+  orderBonus: number;
+  teamVolumeBonus: number;
+  totalDailyEarned: number;
+  completedOrdersCount: number;
+}
+

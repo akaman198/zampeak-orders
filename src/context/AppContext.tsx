@@ -10,7 +10,8 @@ import {
   GamerRole, 
   AttendanceStatus, 
   AttendanceRecord, 
-  PayrollSummary 
+  PayrollSummary,
+  DailyGamerEarnings
 } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
@@ -74,6 +75,7 @@ interface AppContextType {
   updateOrderStatus: (id: string, status: OrderStatus) => Promise<{ success: boolean; error?: string }>;
   saveAttendance: (gamerId: string, date: string, status: AttendanceStatus, farmedMillions?: number) => Promise<{ success: boolean; error?: string }>;
   calculatePayroll: (gamerId: string, cycleLabel: string) => PayrollSummary;
+  getDailyGamerEarnings: (cycleLabel: string, targetGamerId?: string) => DailyGamerEarnings[];
   importBackupData: (gamers: Gamer[], orders: Order[], attendance?: AttendanceRecord[]) => Promise<{ success: boolean; error?: string }>;
   refreshData: () => Promise<void>;
 }
@@ -1032,6 +1034,107 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   };
 
+  const getDailyGamerEarnings = (cycleLabel: string, targetGamerId?: string): DailyGamerEarnings[] => {
+    // 1. Get cycle attendance records
+    const cycleAttendance = attendance.filter(
+      (a) => getAttendancePeriodLabel(a.date) === cycleLabel
+    );
+
+    // Get all unique dates in the cycle attendance records or completed orders
+    const datesSet = new Set<string>();
+    cycleAttendance.forEach((a) => datesSet.add(a.date));
+    
+    orders.forEach((o) => {
+      if (o.status === 'Completed') {
+        const compDate = (o.completed_date || o.start_date).slice(0, 10);
+        if (getOrderPeriodLabel(compDate) === cycleLabel) {
+          datesSet.add(compDate);
+        }
+      }
+    });
+
+    const uniqueDates = Array.from(datesSet).sort().reverse();
+    const activeGamers = targetGamerId
+      ? gamers.filter((g) => g.id === targetGamerId)
+      : gamers.filter((g) => g.status === 'active');
+
+    const result: DailyGamerEarnings[] = [];
+
+    uniqueDates.forEach((dateStr) => {
+      activeGamers.forEach((gamer) => {
+        // Base Salary & Daily Rate
+        let baseSalary = 1200;
+        if (gamer.gamer_role === 'technical_manager') baseSalary = 4500;
+        else if (gamer.gamer_role === 'team_leader') baseSalary = 2200;
+        else if (gamer.level === 'intermediate') baseSalary = 1800;
+        else if (gamer.level === 'advanced') baseSalary = 2500;
+
+        const dailyRate = baseSalary / 26;
+
+        // Attendance record for gamer on this date
+        const att = attendance.find((a) => a.gamer_id === gamer.id && a.date === dateStr);
+        const farmedMillions = Number(att?.farmed_millions || 0);
+        const attendanceStatus = att ? att.status : 'no_log';
+
+        // Base Pay Earned: If present on date, daily rate
+        let basePayEarned = 0;
+        if (att && (att.status === 'present_on_time' || att.status === 'present_late')) {
+          basePayEarned = Number(dailyRate.toFixed(2));
+        }
+
+        // Completed orders on this date for gamer
+        const gamerCompletedOrders = orders.filter((o) => {
+          if (o.gamer_id !== gamer.id || o.status !== 'Completed') return false;
+          const orderDate = (o.completed_date || o.start_date).slice(0, 10);
+          return orderDate === dateStr;
+        });
+
+        const orderBonus = gamerCompletedOrders.reduce((sum, o) => sum + Number(o.payout || 0), 0);
+
+        // Team volume bonus for team leader on this date
+        let teamVolumeBonus = 0;
+        if (gamer.gamer_role === 'team_leader') {
+          const teamMembers = gamers.filter((g) => g.team_leader_id === gamer.id);
+          const teamGamerIds = [gamer.id, ...teamMembers.map((m) => m.id)];
+          const dailyTeamAttendance = attendance.filter(
+            (a) => a.date === dateStr && teamGamerIds.includes(a.gamer_id)
+          );
+          const dailyVolume = dailyTeamAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
+          if (dailyVolume > 50) {
+            const over = dailyVolume - 50;
+            const tens = Math.floor(over / 10);
+            if (tens > 0) {
+              teamVolumeBonus = tens * 10;
+            }
+          }
+        }
+
+        const totalDailyEarned = Number((basePayEarned + orderBonus + teamVolumeBonus).toFixed(2));
+
+        // Include if gamer had attendance log or completed order or team volume bonus > 0
+        if (att || gamerCompletedOrders.length > 0 || teamVolumeBonus > 0) {
+          result.push({
+            date: dateStr,
+            gamerId: gamer.id,
+            gamerName: gamer.name,
+            employeeId: gamer.employee_id,
+            gamerRole: gamer.gamer_role,
+            level: gamer.level,
+            farmedMillions,
+            attendanceStatus,
+            basePayEarned,
+            orderBonus,
+            teamVolumeBonus,
+            totalDailyEarned,
+            completedOrdersCount: gamerCompletedOrders.length
+          });
+        }
+      });
+    });
+
+    return result;
+  };
+
   const importBackupData = async (newGamers: Gamer[], newOrders: Order[], newAttendance?: AttendanceRecord[]) => {
     if (!isDemo && supabase) {
       try {
@@ -1092,6 +1195,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updateOrderStatus,
         saveAttendance,
         calculatePayroll,
+        getDailyGamerEarnings,
         importBackupData,
         refreshData,
       }}

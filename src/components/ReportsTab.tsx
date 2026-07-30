@@ -20,7 +20,7 @@ const formatM = (val: number) => {
 };
 
 export default function ReportsTab() {
-  const { gamers, orders, attendance, importBackupData, isDemo, calculatePayroll } = useApp();
+  const { gamers, orders, attendance, importBackupData, isDemo, calculatePayroll, getDailyGamerEarnings } = useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // States
@@ -161,6 +161,7 @@ export default function ReportsTab() {
   };
 
   const dailyTeamPerformance = getDailyTeamPerformance();
+  const dailyGamerEarnings = getDailyGamerEarnings(selectedCycle);
 
   // 2. Export functions
   const exportToCSV = () => {
@@ -464,6 +465,64 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                     K{totalPayAll.toLocaleString()}
                   </div>
                 </div>
+              </div>
+
+              {/* Daily Gamer Earnings Ledger Section */}
+              <div className="mt-8 pt-6 border-t border-cyber-border/40">
+                <h3 className="font-mono font-bold text-sm text-cyber-cyan uppercase tracking-widest mb-4 flex justify-between items-center">
+                  <span>Daily Gamer Earnings Ledger</span>
+                  <span className="text-[9px] text-slate-500 font-normal lowercase bg-cyber-cyan/10 px-1.5 py-0.5 rounded border border-cyber-cyan/20">per-day gamer earnings breakdown</span>
+                </h3>
+                
+                {dailyGamerEarnings.length === 0 ? (
+                  <div className="py-6 text-center text-slate-500 font-mono text-xs border border-dashed border-cyber-border/30 rounded">
+                    NO DAILY GAMER EARNINGS RECORDED FOR THIS CYCLE.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto border border-cyber-border/30 rounded">
+                    <table className="w-full text-left font-mono text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-cyber-border text-slate-400 font-bold uppercase text-[9px] bg-slate-950/60 select-none">
+                          <th className="py-2.5 px-3">Date</th>
+                          <th className="py-2.5 px-3">Gamer Name</th>
+                          <th className="py-2.5 px-3">Employee ID</th>
+                          <th className="py-2.5 px-3 text-right">Farmed (M)</th>
+                          <th className="py-2.5 px-3 text-right">Base Earned</th>
+                          <th className="py-2.5 px-3 text-center">Attendance Status</th>
+                          <th className="py-2.5 px-3 text-right text-cyber-green">Orders Bonus</th>
+                          <th className="py-2.5 px-3 text-right text-cyber-green">Team Bonus</th>
+                          <th className="py-2.5 px-3 text-right text-cyber-cyan font-black">Daily Total Net</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-cyber-border/20 text-slate-300">
+                        {dailyGamerEarnings.map((rec, idx) => (
+                          <tr key={idx} className="hover:bg-slate-900/40 font-mono">
+                            <td className="py-2.5 px-3 font-bold">{rec.date}</td>
+                            <td className="py-2.5 px-3 font-bold text-slate-100">{rec.gamerName}</td>
+                            <td className="py-2.5 px-3 text-slate-400 font-mono">{rec.employeeId}</td>
+                            <td className="py-2.5 px-3 text-right font-bold text-slate-200">{formatM(rec.farmedMillions)}M</td>
+                            <td className="py-2.5 px-3 text-right">K{rec.basePayEarned.toFixed(2)}</td>
+                            <td className="py-2.5 px-3 text-center">
+                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${
+                                rec.attendanceStatus === 'present_on_time' ? 'bg-cyber-green/10 text-cyber-green border border-cyber-green/20' :
+                                rec.attendanceStatus === 'present_late' ? 'bg-cyber-amber/10 text-cyber-amber border border-cyber-amber/20' :
+                                rec.attendanceStatus === 'absent' ? 'bg-cyber-red/10 text-cyber-red border border-cyber-red/20' :
+                                'bg-slate-800 text-slate-500'
+                              }`}>
+                                {rec.attendanceStatus === 'present_on_time' ? 'On Time' :
+                                 rec.attendanceStatus === 'present_late' ? 'Late' :
+                                 rec.attendanceStatus === 'absent' ? 'Absent' : 'No Log'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-cyber-green font-bold">K{rec.orderBonus}</td>
+                            <td className="py-2.5 px-3 text-right text-cyber-green font-bold">K{rec.teamVolumeBonus}</td>
+                            <td className="py-2.5 px-3 text-right text-cyber-cyan font-black">K{rec.totalDailyEarned.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
 
               {/* Daily Team Performance Ledger Section */}
