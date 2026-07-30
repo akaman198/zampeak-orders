@@ -29,6 +29,7 @@ export default function ReportsTab() {
   const [importStatus, setImportStatus] = useState<{ success: boolean; message: string } | null>(null);
   const [selectedDailyDate, setSelectedDailyDate] = useState<string>(todayStr);
   const [selectedTeamVolumeDate, setSelectedTeamVolumeDate] = useState<string>(todayStr);
+  const [selectedGamerFilter, setSelectedGamerFilter] = useState<string>('all');
 
   // Generate list of cycles
   const getAvailablePayCycles = () => {
@@ -170,9 +171,11 @@ export default function ReportsTab() {
 
   const dailyGamerEarnings = getDailyGamerEarnings(selectedCycle);
   const availableDailyDates = Array.from(new Set(dailyGamerEarnings.map(r => r.date))).sort().reverse();
-  const filteredDailyEarnings = selectedDailyDate === 'all' 
-    ? dailyGamerEarnings 
-    : dailyGamerEarnings.filter(r => r.date === selectedDailyDate);
+  const filteredDailyEarnings = dailyGamerEarnings.filter(r => {
+    const matchesDate = selectedDailyDate === 'all' || r.date === selectedDailyDate;
+    const matchesGamer = selectedGamerFilter === 'all' || r.gamerId === selectedGamerFilter || r.gamerName === selectedGamerFilter;
+    return matchesDate && matchesGamer;
+  });
 
   // 2. Export functions
   const exportToCSV = () => {
@@ -486,26 +489,44 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                     <span className="text-[9px] text-slate-500 font-normal lowercase bg-cyber-cyan/10 px-1.5 py-0.5 rounded border border-cyber-cyan/20">per-day gamer earnings breakdown</span>
                   </h3>
 
-                  {/* Date Filter Dropdown */}
-                  <div className="flex items-center gap-2 font-mono text-xs print:hidden">
-                    <span className="text-slate-400 text-[10px] uppercase font-bold">Filter Date:</span>
-                    <select
-                      value={selectedDailyDate}
-                      onChange={(e) => setSelectedDailyDate(e.target.value)}
-                      className="bg-slate-950 border border-cyber-border rounded px-2.5 py-1 text-cyber-cyan text-xs font-mono focus:outline-none focus:border-cyber-cyan cursor-pointer"
-                    >
-                      <option value={todayStr}>Today ({todayStr})</option>
-                      <option value="all">All Dates in Cycle</option>
-                      {availableDailyDates.filter(d => d !== todayStr).map(date => (
-                        <option key={date} value={date}>{date}</option>
-                      ))}
-                    </select>
+                  {/* Filter Controls (Gamer Name + Date) */}
+                  <div className="flex flex-wrap items-center gap-3 font-mono text-xs print:hidden">
+                    {/* Gamer Name Filter */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-400 text-[10px] uppercase font-bold">Gamer:</span>
+                      <select
+                        value={selectedGamerFilter}
+                        onChange={(e) => setSelectedGamerFilter(e.target.value)}
+                        className="bg-slate-950 border border-cyber-border rounded px-2.5 py-1 text-cyber-cyan text-xs font-mono focus:outline-none focus:border-cyber-cyan cursor-pointer max-w-[160px] truncate"
+                      >
+                        <option value="all">All Gamers</option>
+                        {gamers.filter(g => g.status === 'active').map(g => (
+                          <option key={g.id} value={g.id}>{g.name} ({g.employee_id})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Date Filter Dropdown */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-400 text-[10px] uppercase font-bold">Date:</span>
+                      <select
+                        value={selectedDailyDate}
+                        onChange={(e) => setSelectedDailyDate(e.target.value)}
+                        className="bg-slate-950 border border-cyber-border rounded px-2.5 py-1 text-cyber-cyan text-xs font-mono focus:outline-none focus:border-cyber-cyan cursor-pointer"
+                      >
+                        <option value={todayStr}>Today ({todayStr})</option>
+                        <option value="all">All Dates in Cycle</option>
+                        {availableDailyDates.filter(d => d !== todayStr).map(date => (
+                          <option key={date} value={date}>{date}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
                 
                 {filteredDailyEarnings.length === 0 ? (
                   <div className="py-6 text-center text-slate-500 font-mono text-xs border border-dashed border-cyber-border/30 rounded">
-                    NO DAILY GAMER EARNINGS RECORDED FOR {selectedDailyDate === 'all' ? 'THIS CYCLE' : selectedDailyDate}.
+                    NO DAILY GAMER EARNINGS RECORDED FOR {selectedGamerFilter === 'all' ? '' : 'SELECTED GAMER ON '}{selectedDailyDate === 'all' ? 'THIS CYCLE' : selectedDailyDate}.
                   </div>
                 ) : (
                   <div className="overflow-x-auto border border-cyber-border/30 rounded">
