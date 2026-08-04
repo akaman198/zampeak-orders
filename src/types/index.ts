@@ -15,6 +15,7 @@ export interface Gamer {
   level: GamerLevel;
   gamer_role: GamerRole;
   team_leader_id: string | null;
+  bonus_adjustment?: number;
   created_at: string;
 }
 

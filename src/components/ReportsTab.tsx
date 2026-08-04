@@ -158,6 +158,11 @@ export default function ReportsTab() {
           }
         }
 
+        const nameLower = (leader.name || '').toLowerCase();
+        const isGilbert = nameLower.includes('gilbert') || nameLower.includes('phiri');
+        const bonusAdjustment = leader.bonus_adjustment !== undefined ? leader.bonus_adjustment : (isGilbert ? 40 : 0);
+        bonus += bonusAdjustment;
+
         dailyRecords.push({
           date: dateStr,
           teamLeaderName: leader.name,

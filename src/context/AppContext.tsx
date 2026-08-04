@@ -1021,6 +1021,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         }
       });
+
+      // Apply team leader bonus adjustment (e.g. Gilbert Phiri +K40 bonus)
+      const nameLower = (gamer.name || '').toLowerCase();
+      const isGilbert = nameLower.includes('gilbert') || nameLower.includes('phiri');
+      const bonusAdjustment = gamer.bonus_adjustment !== undefined ? gamer.bonus_adjustment : (isGilbert ? 40 : 0);
+      teamVolumeBonus += bonusAdjustment;
     }
 
     const totalPay = Number(Math.max(0, basePayEarned - lateDeduction + attendanceBonus + orderBonus + teamVolumeBonus).toFixed(2));
@@ -1125,6 +1131,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
               teamVolumeBonus = tens * 10;
             }
           }
+
+          // Apply team leader bonus adjustment (e.g. Gilbert Phiri +K40 bonus)
+          const nameLower = (gamer.name || '').toLowerCase();
+          const isGilbert = nameLower.includes('gilbert') || nameLower.includes('phiri');
+          const bonusAdjustment = gamer.bonus_adjustment !== undefined ? gamer.bonus_adjustment : (isGilbert ? 40 : 0);
+          teamVolumeBonus += bonusAdjustment;
         }
 
         const totalDailyEarned = Number((basePayEarned + orderBonus + teamVolumeBonus).toFixed(2));
