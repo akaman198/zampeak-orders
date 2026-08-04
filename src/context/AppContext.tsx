@@ -884,17 +884,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (!isDemo && supabase) {
       try {
-        const { data, error } = await supabase
+        const payload: any = {
+          gamer_id: gamerId,
+          date,
+          status: finalStatus,
+          farmed_millions: finalFarmedMillions,
+          created_at: new Date().toISOString()
+        };
+        if (currentTeamLeaderId) {
+          payload.team_leader_id = currentTeamLeaderId;
+        }
+
+        let { data, error } = await supabase
           .from('attendance')
-          .upsert({
-            gamer_id: gamerId,
-            date,
-            status: finalStatus,
-            farmed_millions: finalFarmedMillions,
-            team_leader_id: currentTeamLeaderId,
-            created_at: new Date().toISOString()
-          }, { onConflict: 'gamer_id,date' })
+          .upsert(payload, { onConflict: 'gamer_id,date' })
           .select();
+
+        if (error && (error.message?.includes('team_leader_id') || error.message?.includes('schema cache'))) {
+          // Graceful fallback retry if team_leader_id column has not been added to Supabase table yet
+          delete payload.team_leader_id;
+          const retryRes = await supabase
+            .from('attendance')
+            .upsert(payload, { onConflict: 'gamer_id,date' })
+            .select();
+          data = retryRes.data;
+          error = retryRes.error;
+        }
 
         if (error) throw error;
         
