@@ -864,6 +864,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const saveAttendance = async (gamerId: string, date: string, status: AttendanceStatus, farmedMillions?: number) => {
     const existingRecord = attendance.find(a => a.gamer_id === gamerId && a.date === date);
+    const targetGamer = gamers.find(g => g.id === gamerId);
+    const currentTeamLeaderId = existingRecord?.team_leader_id !== undefined 
+      ? existingRecord.team_leader_id 
+      : (targetGamer?.team_leader_id || null);
+
     const finalStatus = status;
     const finalFarmedMillions = farmedMillions !== undefined ? farmedMillions : (existingRecord?.farmed_millions || 0);
 
@@ -873,6 +878,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       date,
       status: finalStatus,
       farmed_millions: finalFarmedMillions,
+      team_leader_id: currentTeamLeaderId,
       created_at: existingRecord?.created_at || new Date().toISOString(),
     };
 
@@ -885,6 +891,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             date,
             status: finalStatus,
             farmed_millions: finalFarmedMillions,
+            team_leader_id: currentTeamLeaderId,
             created_at: new Date().toISOString()
           }, { onConflict: 'gamer_id,date' })
           .select();
@@ -985,13 +992,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // 6. Team Leader Daily Volume Bonus
     let teamVolumeBonus = 0;
     if (gamer.gamer_role === 'team_leader') {
-      const teamMembers = gamers.filter((g) => g.team_leader_id === gamerId);
-      const teamGamerIds = [gamerId, ...teamMembers.map((m) => m.id)];
+      const currentTeamMembers = gamers.filter((g) => g.team_leader_id === gamerId);
+      const currentTeamGamerIds = currentTeamMembers.map((m) => m.id);
 
       // Find attendance records for these team members or leader in this cycle
-      const teamAttendance = attendance.filter(
-        (a) => teamGamerIds.includes(a.gamer_id) && getAttendancePeriodLabel(a.date) === cycleLabel
-      );
+      const teamAttendance = attendance.filter((a) => {
+        if (getAttendancePeriodLabel(a.date) !== cycleLabel) return false;
+        if (a.gamer_id === gamerId) return true;
+        if (a.team_leader_id !== undefined && a.team_leader_id !== null) {
+          return a.team_leader_id === gamerId;
+        }
+        return currentTeamGamerIds.includes(a.gamer_id);
+      });
 
       // Group by daily local date string and sum farmed_millions
       const dailyTotals: { [dateStr: string]: number } = {};
@@ -1094,11 +1106,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Team volume bonus for team leader on this date
         let teamVolumeBonus = 0;
         if (gamer.gamer_role === 'team_leader') {
-          const teamMembers = gamers.filter((g) => g.team_leader_id === gamer.id);
-          const teamGamerIds = [gamer.id, ...teamMembers.map((m) => m.id)];
-          const dailyTeamAttendance = attendance.filter(
-            (a) => a.date === dateStr && teamGamerIds.includes(a.gamer_id)
-          );
+          const currentTeamMembers = gamers.filter((g) => g.team_leader_id === gamer.id);
+          const currentTeamGamerIds = currentTeamMembers.map((m) => m.id);
+
+          const dailyTeamAttendance = attendance.filter((a) => {
+            if (a.date !== dateStr) return false;
+            if (a.gamer_id === gamer.id) return true;
+            if (a.team_leader_id !== undefined && a.team_leader_id !== null) {
+              return a.team_leader_id === gamer.id;
+            }
+            return currentTeamGamerIds.includes(a.gamer_id);
+          });
           const dailyVolume = dailyTeamAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
           if (dailyVolume > 50) {
             const over = dailyVolume - 50;

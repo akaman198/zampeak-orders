@@ -24,6 +24,7 @@ export interface AttendanceRecord {
   date: string; // YYYY-MM-DD
   status: AttendanceStatus;
   farmed_millions: number;
+  team_leader_id?: string | null;
   created_at: string;
 }
 

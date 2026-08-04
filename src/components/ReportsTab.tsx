@@ -136,10 +136,17 @@ export default function ReportsTab() {
 
     uniqueDates.forEach(dateStr => {
       activeLeaders.forEach(leader => {
-        const teamMembers = gamers.filter(g => g.team_leader_id === leader.id || g.id === leader.id);
+        const teamMembers = gamers.filter(g => g.team_leader_id === leader.id);
         const teamMemberIds = teamMembers.map(m => m.id);
 
-        const dailyAttendance = cycleAttendance.filter(a => a.date === dateStr && teamMemberIds.includes(a.gamer_id));
+        const dailyAttendance = cycleAttendance.filter(a => {
+          if (a.date !== dateStr) return false;
+          if (a.gamer_id === leader.id) return true;
+          if (a.team_leader_id !== undefined && a.team_leader_id !== null) {
+            return a.team_leader_id === leader.id;
+          }
+          return teamMemberIds.includes(a.gamer_id);
+        });
         const volume = dailyAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
 
         let bonus = 0;
@@ -297,6 +304,7 @@ CREATE TABLE public.attendance (
     date DATE NOT NULL,
     status TEXT NOT NULL,
     farmed_millions NUMERIC NOT NULL DEFAULT 0,
+    team_leader_id UUID REFERENCES public.gamers(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     UNIQUE(gamer_id, date)
 );

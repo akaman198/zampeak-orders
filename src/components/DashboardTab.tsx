@@ -116,12 +116,18 @@ export default function DashboardTab({
   
   const teamSummaries = teamLeaders.map(tl => {
     const members = gamers.filter(g => g.team_leader_id === tl.id);
-    const teamIds = [tl.id, ...members.map(m => m.id)];
+    const memberIds = members.map(m => m.id);
+    const teamIds = [tl.id, ...memberIds];
     
-    // Sum attendance logs for team farmed assets
-    const teamAttendance = attendance.filter(
-      a => teamIds.includes(a.gamer_id) && getPayPeriodLabel(a.date) === selectedCycle
-    );
+    // Sum attendance logs for team farmed assets (checking snapshot if present)
+    const teamAttendance = attendance.filter(a => {
+      if (getPayPeriodLabel(a.date) !== selectedCycle) return false;
+      if (a.gamer_id === tl.id) return true;
+      if (a.team_leader_id !== undefined && a.team_leader_id !== null) {
+        return a.team_leader_id === tl.id;
+      }
+      return memberIds.includes(a.gamer_id);
+    });
     const totalAssets = teamAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
 
     const teamOrders = allOrders.filter(
@@ -205,8 +211,14 @@ export default function DashboardTab({
   const weeklyTeamStats = teamLeaders
     .map(tl => {
       const members = gamers.filter(g => g.team_leader_id === tl.id);
-      const teamIds = [tl.id, ...members.map(m => m.id)];
-      const teamAttendance = weeklyAttendance.filter(a => teamIds.includes(a.gamer_id));
+      const memberIds = members.map(m => m.id);
+      const teamAttendance = weeklyAttendance.filter(a => {
+        if (a.gamer_id === tl.id) return true;
+        if (a.team_leader_id !== undefined && a.team_leader_id !== null) {
+          return a.team_leader_id === tl.id;
+        }
+        return memberIds.includes(a.gamer_id);
+      });
       const farmed = teamAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
       return {
         leaderId: tl.id,
