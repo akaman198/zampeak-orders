@@ -11,7 +11,8 @@ import {
   CheckCircle,
   AlertTriangle,
   Copy,
-  Check
+  Check,
+  Package
 } from 'lucide-react';
 
 const formatM = (val: number) => {
@@ -30,6 +31,7 @@ export default function ReportsTab() {
   const [selectedDailyDate, setSelectedDailyDate] = useState<string>(todayStr);
   const [selectedTeamVolumeDate, setSelectedTeamVolumeDate] = useState<string>(todayStr);
   const [selectedGamerFilter, setSelectedGamerFilter] = useState<string>('all');
+  const [selectedOrderGamerFilter, setSelectedOrderGamerFilter] = useState<string>('all');
 
   // Generate list of cycles
   const getAvailablePayCycles = () => {
@@ -189,6 +191,63 @@ export default function ReportsTab() {
     return matchesDate && matchesGamer;
   });
 
+  // Monthly Order Quantities & Completion Statistics per Employee
+  const monthlyOrderStats = activeOperators.map(g => {
+    const gamerCompletedOrders = orders.filter(
+      o => o.gamer_id === g.id && o.status === 'Completed' && getOrderPeriodLabel(o.completed_date || o.start_date) === selectedCycle
+    );
+    const gamerRunningOrders = orders.filter(
+      o => o.gamer_id === g.id && o.status === 'Running'
+    );
+    const gamerAllCycleOrders = orders.filter(
+      o => o.gamer_id === g.id && (getOrderPeriodLabel(o.completed_date || o.start_date) === selectedCycle || getOrderPeriodLabel(o.start_date) === selectedCycle)
+    );
+
+    const completedCount = gamerCompletedOrders.length;
+    const runningCount = gamerRunningOrders.length;
+    const totalVolumeM = gamerCompletedOrders.reduce((sum, o) => sum + Number(o.size_millions || 0), 0);
+    
+    const havalVolumeM = gamerCompletedOrders
+      .filter(o => o.asset_type === 'Haval Coins')
+      .reduce((sum, o) => sum + Number(o.size_millions || 0), 0);
+    
+    const totalAssetsVolumeM = gamerCompletedOrders
+      .filter(o => o.asset_type === 'Total Assets')
+      .reduce((sum, o) => sum + Number(o.size_millions || 0), 0);
+
+    const totalPayout = gamerCompletedOrders.reduce((sum, o) => sum + Number(o.payout || 0), 0);
+    const avgOrderSize = completedCount > 0 ? totalVolumeM / completedCount : 0;
+    const completionRate = gamerAllCycleOrders.length > 0
+      ? Math.round((completedCount / gamerAllCycleOrders.length) * 100)
+      : (completedCount > 0 ? 100 : 0);
+
+    return {
+      gamerId: g.id,
+      gamerName: g.name,
+      employeeId: g.employee_id,
+      gamerRole: g.gamer_role,
+      level: g.level,
+      completedCount,
+      runningCount,
+      totalVolumeM,
+      havalVolumeM,
+      totalAssetsVolumeM,
+      totalPayout,
+      avgOrderSize,
+      completionRate
+    };
+  }).sort((a, b) => b.totalVolumeM - a.totalVolumeM || b.completedCount - a.completedCount);
+
+  const filteredMonthlyOrderStats = selectedOrderGamerFilter === 'all'
+    ? monthlyOrderStats
+    : monthlyOrderStats.filter(s => s.gamerId === selectedOrderGamerFilter || s.gamerName === selectedOrderGamerFilter);
+
+  const totalCompletedOrdersMonth = monthlyOrderStats.reduce((sum, s) => sum + s.completedCount, 0);
+  const totalOrderVolumeMonth = monthlyOrderStats.reduce((sum, s) => sum + s.totalVolumeM, 0);
+  const totalHavalVolumeMonth = monthlyOrderStats.reduce((sum, s) => sum + s.havalVolumeM, 0);
+  const totalAssetsVolumeMonth = monthlyOrderStats.reduce((sum, s) => sum + s.totalAssetsVolumeM, 0);
+  const totalOrderPayoutMonth = monthlyOrderStats.reduce((sum, s) => sum + s.totalPayout, 0);
+
   // 2. Export functions
   const exportToCSV = () => {
     const headers = [
@@ -227,6 +286,65 @@ export default function ReportsTab() {
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
     link.setAttribute("download", `zampeak_payroll_${selectedCycle.replace(' ', '_').replace(',', '')}_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportOrderStatsToCSV = () => {
+    const headers = [
+      'Gamer Name',
+      'Employee ID',
+      'Role',
+      'Level',
+      'Completed Orders',
+      'Total Order Volume (M Assets)',
+      'Haval Coins Volume (M)',
+      'Total Assets Volume (M)',
+      'Running Orders',
+      'Total Order Payout (Kwacha K)',
+      'Avg Order Size (M)',
+      'Completion Rate (%)'
+    ];
+
+    const rows = monthlyOrderStats.map(s => [
+      `"${s.gamerName}"`,
+      `"${s.employeeId}"`,
+      `"${s.gamerRole.replace('_', ' ').toUpperCase()}"`,
+      `"${s.level.toUpperCase()}"`,
+      s.completedCount,
+      formatM(s.totalVolumeM),
+      formatM(s.havalVolumeM),
+      formatM(s.totalAssetsVolumeM),
+      s.runningCount,
+      s.totalPayout,
+      formatM(s.avgOrderSize),
+      `"${s.completionRate}%"`
+    ]);
+
+    // Totals row
+    rows.push([
+      '"TOTALS"',
+      '""',
+      '""',
+      '""',
+      totalCompletedOrdersMonth,
+      formatM(totalOrderVolumeMonth),
+      formatM(totalHavalVolumeMonth),
+      formatM(totalAssetsVolumeMonth),
+      monthlyOrderStats.reduce((sum, s) => sum + s.runningCount, 0),
+      totalOrderPayoutMonth,
+      formatM(totalCompletedOrdersMonth > 0 ? totalOrderVolumeMonth / totalCompletedOrdersMonth : 0),
+      '""'
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `zampeak_monthly_order_quantities_${selectedCycle.replace(' ', '_').replace(',', '')}_${new Date().toISOString().slice(0,10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -385,13 +503,20 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
             </select>
           </div>
           
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-2">
             <button 
               onClick={exportToCSV}
               className="flex items-center gap-1.5 font-mono text-xs uppercase font-bold border border-cyber-border bg-slate-900 px-3 py-2 rounded text-slate-300 hover:border-cyber-cyan hover:text-cyber-cyan transition-all cursor-pointer"
             >
               <FileSpreadsheet size={14} />
-              Export CSV
+              Export Payroll CSV
+            </button>
+            <button 
+              onClick={exportOrderStatsToCSV}
+              className="flex items-center gap-1.5 font-mono text-xs uppercase font-bold border border-cyber-cyan/40 bg-cyber-cyan/10 px-3 py-2 rounded text-cyber-cyan hover:bg-cyber-cyan/20 transition-all cursor-pointer"
+            >
+              <Package size={14} />
+              Export Orders CSV
             </button>
             <button 
               onClick={handlePrint}
@@ -492,6 +617,169 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                     K{totalPayAll.toLocaleString()}
                   </div>
                 </div>
+              </div>
+
+              {/* Monthly Employee Order Quantities & Completion Statistics Section */}
+              <div className="mt-8 pt-6 border-t border-cyber-border/40">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+                  <div>
+                    <h3 className="font-mono font-bold text-sm text-cyber-cyan uppercase tracking-widest flex items-center gap-2">
+                      <Package size={16} className="text-cyber-cyan" />
+                      <span>Monthly Employee Order Statistics</span>
+                      <span className="text-[9px] text-slate-500 font-normal lowercase bg-cyber-cyan/10 px-1.5 py-0.5 rounded border border-cyber-cyan/20">quantities & completions</span>
+                    </h3>
+                    <p className="text-[10px] text-slate-500 font-mono mt-0.5 uppercase tracking-wider">
+                      Orders completed between 15th to 14th ({selectedCycle})
+                    </p>
+                  </div>
+
+                  {/* Filter & Export Controls */}
+                  <div className="flex flex-wrap items-center gap-2 font-mono text-xs print:hidden">
+                    {/* Gamer Filter */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-400 text-[10px] uppercase font-bold">Gamer:</span>
+                      <select
+                        value={selectedOrderGamerFilter}
+                        onChange={(e) => setSelectedOrderGamerFilter(e.target.value)}
+                        className="bg-slate-950 border border-cyber-border rounded px-2.5 py-1 text-cyber-cyan text-xs font-mono focus:outline-none focus:border-cyber-cyan cursor-pointer max-w-[150px] truncate"
+                      >
+                        <option value="all">All Gamers</option>
+                        {gamers.filter(g => g.status === 'active').map(g => (
+                          <option key={g.id} value={g.id}>{g.name} ({g.employee_id})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <button
+                      onClick={exportOrderStatsToCSV}
+                      className="flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold border border-cyber-cyan/40 bg-cyber-cyan/10 text-cyber-cyan px-2.5 py-1 rounded hover:bg-cyber-cyan/20 transition-all cursor-pointer"
+                    >
+                      <Download size={12} />
+                      Export Orders CSV
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tactical Mini-Stats Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                  <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30">
+                    <span className="text-[9px] text-slate-500 uppercase font-mono">Completed Orders</span>
+                    <div className="text-base font-bold text-cyber-green font-mono mt-0.5">
+                      {totalCompletedOrdersMonth} Missions
+                    </div>
+                  </div>
+                  <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30">
+                    <span className="text-[9px] text-slate-500 uppercase font-mono">Total Quantity Farmed</span>
+                    <div className="text-base font-bold text-slate-200 font-mono mt-0.5">
+                      {formatM(totalOrderVolumeMonth)}M Assets
+                    </div>
+                  </div>
+                  <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30">
+                    <span className="text-[9px] text-slate-500 uppercase font-mono">Haval vs Total Assets</span>
+                    <div className="text-base font-bold text-cyber-cyan font-mono mt-0.5">
+                      {formatM(totalHavalVolumeMonth)}M / {formatM(totalAssetsVolumeMonth)}M
+                    </div>
+                  </div>
+                  <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30">
+                    <span className="text-[9px] text-slate-500 uppercase font-mono">Total Orders Payout</span>
+                    <div className="text-base font-bold text-cyber-green font-mono mt-0.5">
+                      K{totalOrderPayoutMonth.toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Table */}
+                {filteredMonthlyOrderStats.length === 0 ? (
+                  <div className="py-6 text-center text-slate-500 font-mono text-xs border border-dashed border-cyber-border/30 rounded">
+                    NO ORDER DATA RECORDED FOR {selectedOrderGamerFilter === 'all' ? 'THIS CYCLE' : 'SELECTED GAMER'}.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto border border-cyber-border/30 rounded">
+                    <table className="w-full text-left font-mono text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-cyber-border text-slate-400 font-bold uppercase text-[9px] bg-slate-950/60 select-none">
+                          <th className="py-2.5 px-3">Gamer Name</th>
+                          <th className="py-2.5 px-3">Employee ID</th>
+                          <th className="py-2.5 px-3">Role / Level</th>
+                          <th className="py-2.5 px-3 text-center">Completed Orders</th>
+                          <th className="py-2.5 px-3 text-right">Total Quantity (M)</th>
+                          <th className="py-2.5 px-3 text-right text-cyber-cyan">Haval Coins</th>
+                          <th className="py-2.5 px-3 text-right text-slate-300">Total Assets</th>
+                          <th className="py-2.5 px-3 text-center">Running</th>
+                          <th className="py-2.5 px-3 text-right text-cyber-green">Orders Payout</th>
+                          <th className="py-2.5 px-3 text-right">Avg Order</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-cyber-border/20 text-slate-300">
+                        {filteredMonthlyOrderStats.map((stat, idx) => (
+                          <tr key={stat.gamerId || idx} className="hover:bg-slate-900/40 font-mono">
+                            <td className="py-2.5 px-3 font-bold text-slate-100">{stat.gamerName}</td>
+                            <td className="py-2.5 px-3 text-slate-400 font-mono">{stat.employeeId}</td>
+                            <td className="py-2.5 px-3 capitalize text-slate-400">
+                              {stat.gamerRole.replace('_', ' ')} / {stat.level}
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                stat.completedCount > 0 
+                                  ? 'bg-cyber-green/10 text-cyber-green border border-cyber-green/20' 
+                                  : 'bg-slate-800 text-slate-500'
+                              }`}>
+                                {stat.completedCount} orders
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-bold text-slate-200">
+                              {formatM(stat.totalVolumeM)}M
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-bold text-cyber-cyan">
+                              {formatM(stat.havalVolumeM)}M
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-bold text-slate-400">
+                              {formatM(stat.totalAssetsVolumeM)}M
+                            </td>
+                            <td className="py-2.5 px-3 text-center text-slate-400">
+                              {stat.runningCount > 0 ? (
+                                <span className="text-cyber-cyan font-bold">{stat.runningCount} active</span>
+                              ) : (
+                                '-'
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-cyber-green font-bold">
+                              K{stat.totalPayout.toLocaleString()}
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-slate-400">
+                              {stat.completedCount > 0 ? `${formatM(stat.avgOrderSize)}M` : '-'}
+                            </td>
+                          </tr>
+                        ))}
+                        {/* Totals Row */}
+                        <tr className="border-t-2 border-cyber-cyan bg-slate-950/80 font-bold text-slate-200 text-[10px]">
+                          <td className="py-3 px-3 uppercase font-black" colSpan={3}>TOTALS</td>
+                          <td className="py-3 px-3 text-center font-black text-cyber-green">
+                            {totalCompletedOrdersMonth} orders
+                          </td>
+                          <td className="py-3 px-3 text-right font-black">
+                            {formatM(totalOrderVolumeMonth)}M
+                          </td>
+                          <td className="py-3 px-3 text-right font-black text-cyber-cyan">
+                            {formatM(totalHavalVolumeMonth)}M
+                          </td>
+                          <td className="py-3 px-3 text-right font-black text-slate-300">
+                            {formatM(totalAssetsVolumeMonth)}M
+                          </td>
+                          <td className="py-3 px-3 text-center font-black text-slate-400">
+                            {monthlyOrderStats.reduce((sum, s) => sum + s.runningCount, 0)} active
+                          </td>
+                          <td className="py-3 px-3 text-right font-black text-cyber-green">
+                            K{totalOrderPayoutMonth.toLocaleString()}
+                          </td>
+                          <td className="py-3 px-3 text-right font-black text-slate-400">
+                            {totalCompletedOrdersMonth > 0 ? `${formatM(totalOrderVolumeMonth / totalCompletedOrdersMonth)}M` : '-'}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
 
               {/* Daily Gamer Earnings Ledger Section */}
