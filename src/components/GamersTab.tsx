@@ -21,7 +21,7 @@ const formatM = (val: number) => {
 };
 
 export default function GamersTab() {
-  const { gamers, orders, addGamer, updateGamer, deleteGamer, resetGamerPassword, calculatePayroll, getDailyGamerEarnings } = useApp();
+  const { gamers, orders, addGamer, updateGamer, deleteGamer, resetGamerPassword, calculatePayroll, getDailyGamerEarnings, role } = useApp();
 
   const todayStr = new Date().toISOString().slice(0, 10);
   // Component States
@@ -208,13 +208,19 @@ export default function GamersTab() {
             <User size={16} className="text-cyber-cyan" />
             Gamer Dossiers
           </h3>
-          <button 
-            onClick={() => { setIsAdding(true); setIsEditing(null); setSelectedGamer(null); resetForm(); }}
-            className="flex items-center gap-1 font-mono text-[10px] uppercase font-bold text-cyber-cyan border border-cyber-cyan/30 bg-cyber-cyan/5 px-2.5 py-1 rounded hover:bg-cyber-cyan/20 hover:border-cyber-cyan shadow-neon-cyan/10 hover:shadow-neon-cyan/20 transition-all cursor-pointer"
-          >
-            <UserPlus size={12} />
-            Recruit Gamer
-          </button>
+          {role === 'admin' ? (
+            <button 
+              onClick={() => { setIsAdding(true); setIsEditing(null); setSelectedGamer(null); resetForm(); }}
+              className="flex items-center gap-1 font-mono text-[10px] uppercase font-bold text-cyber-cyan border border-cyber-cyan/30 bg-cyber-cyan/5 px-2.5 py-1 rounded hover:bg-cyber-cyan/20 hover:border-cyber-cyan shadow-neon-cyan/10 hover:shadow-neon-cyan/20 transition-all cursor-pointer"
+            >
+              <UserPlus size={12} />
+              Recruit Gamer
+            </button>
+          ) : (
+            <span className="text-[9px] text-cyber-amber font-mono bg-cyber-amber/10 px-2 py-0.5 rounded border border-cyber-amber/30 font-bold">
+              READ-ONLY
+            </span>
+          )}
         </div>
 
         {/* Gamers List */}
@@ -622,29 +628,35 @@ export default function GamersTab() {
                   </div>
                 </div>
                 
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => handleResetPassword(selectedGamer)}
-                    className="p-2 border border-cyber-border hover:border-cyber-amber rounded bg-slate-950 hover:bg-cyber-amber/10 text-slate-400 hover:text-cyber-amber transition-all cursor-pointer"
-                    title="Reset Access Password"
-                  >
-                    <Key size={14} />
-                  </button>
-                  <button 
-                    onClick={() => startEdit(selectedGamer)}
-                    className="p-2 border border-cyber-border hover:border-cyber-cyan rounded bg-slate-950 hover:bg-cyber-cyan/10 text-slate-300 hover:text-cyber-cyan transition-all cursor-pointer"
-                    title="Edit Gamer Info"
-                  >
-                    <Edit3 size={14} />
-                  </button>
-                  <button 
-                    onClick={() => handleDelete(selectedGamer.id)}
-                    className="p-2 border border-cyber-border hover:border-cyber-red rounded bg-slate-950 hover:bg-cyber-red/10 text-slate-300 hover:text-cyber-red transition-all cursor-pointer"
-                    title="Delete Gamer"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+                {role === 'admin' ? (
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => handleResetPassword(selectedGamer)}
+                      className="p-2 border border-cyber-border hover:border-cyber-amber rounded bg-slate-950 hover:bg-cyber-amber/10 text-slate-400 hover:text-cyber-amber transition-all cursor-pointer"
+                      title="Reset Access Password"
+                    >
+                      <Key size={14} />
+                    </button>
+                    <button 
+                      onClick={() => startEdit(selectedGamer)}
+                      className="p-2 border border-cyber-border hover:border-cyber-cyan rounded bg-slate-950 hover:bg-cyber-cyan/10 text-slate-300 hover:text-cyber-cyan transition-all cursor-pointer"
+                      title="Edit Gamer Info"
+                    >
+                      <Edit3 size={14} />
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(selectedGamer.id)}
+                      className="p-2 border border-cyber-border hover:border-cyber-red rounded bg-slate-950 hover:bg-cyber-red/10 text-slate-300 hover:text-cyber-red transition-all cursor-pointer"
+                      title="Delete Gamer"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-[10px] text-slate-500 font-mono bg-slate-900/80 px-2.5 py-1 rounded border border-cyber-border/40 font-bold uppercase select-none">
+                    Auditor View
+                  </span>
+                )}
               </div>
 
               {/* Personal Metrics Dossier */}

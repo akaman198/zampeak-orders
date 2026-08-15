@@ -158,6 +158,7 @@ export default function Home() {
               <div className="p-3 border border-cyber-amber/35 bg-cyber-amber/5 text-cyber-amber rounded text-[10px] leading-relaxed space-y-1">
                 <div><strong>DEMO AUTH ACTIVE:</strong> Sign in with:</div>
                 <div><span className="text-slate-300 font-bold">Admin:</span> admin@zampeak.com / admin123</div>
+                <div><span className="text-slate-300 font-bold">Viewer (Auditor):</span> viewer@zampeak.com / viewer123</div>
                 <div><span className="text-slate-300 font-bold">Gamer:</span> Recruit a gamer employee ID (e.g. ZP-101) with default password, and sign in directly!</div>
               </div>
             )}
@@ -249,7 +250,7 @@ export default function Home() {
                 ZAMPEAK <span className="text-cyber-cyan text-glow-cyan text-[11px] font-bold tracking-normal bg-cyber-cyan/10 px-1.5 py-0.5 rounded border border-cyber-cyan/20">OS v1.0</span>
               </h1>
               <div className="lg:hidden text-[9px] font-mono text-cyber-cyan font-bold uppercase tracking-wider mt-0.5">
-                OP: {role === 'gamer' && gamerProfile ? gamerProfile.name : user?.email?.split('@')[0]} ({role.toUpperCase()})
+                OP: {role === 'gamer' && gamerProfile ? gamerProfile.name : user?.email?.split('@')[0]} ({role === 'viewer' ? 'VIEWER (READ-ONLY)' : role.toUpperCase()})
               </div>
               <p className="hidden lg:block text-[9px] font-mono text-slate-500 uppercase tracking-widest mt-0.5">
                 Delta Force Mobile Order Tracking Command
@@ -267,7 +268,7 @@ export default function Home() {
             <div>
               <span>OPERATOR: <span className="text-slate-200 font-bold select-all">
                 {role === 'gamer' && gamerProfile ? gamerProfile.name : user.email}
-              </span> ({role.toUpperCase()})</span>
+              </span> ({role === 'viewer' ? 'AUDITOR / READ-ONLY' : role.toUpperCase()})</span>
             </div>
             <div className="h-3 w-px bg-cyber-border"></div>
             <div className="flex items-center gap-1.5">
@@ -295,7 +296,7 @@ export default function Home() {
                 <span className="hidden lg:inline">Dashboard</span>
               </button>
               
-              {role === 'admin' && (
+              {(role === 'admin' || role === 'viewer') && (
                 <button 
                   onClick={() => setActiveTab('gamers')}
                   className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer shrink-0 ${
@@ -309,7 +310,7 @@ export default function Home() {
                 </button>
               )}
 
-              {role === 'admin' && (
+              {(role === 'admin' || role === 'viewer') && (
                 <button 
                   onClick={() => setActiveTab('attendance')}
                   className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer shrink-0 ${
@@ -335,7 +336,7 @@ export default function Home() {
                 <span className="hidden lg:inline">Orders</span>
               </button>
 
-              {role === 'admin' && (
+              {(role === 'admin' || role === 'viewer') && (
                 <button 
                   onClick={() => setActiveTab('reports')}
                   className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold px-3 py-1.5 rounded transition-all cursor-pointer shrink-0 ${

@@ -21,7 +21,7 @@ const formatM = (val: number) => {
 };
 
 export default function ReportsTab() {
-  const { gamers, orders, attendance, importBackupData, isDemo, calculatePayroll, getDailyGamerEarnings } = useApp();
+  const { gamers, orders, attendance, importBackupData, isDemo, calculatePayroll, getDailyGamerEarnings, role } = useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -967,20 +967,24 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
               Export Backup (.json)
             </button>
 
-            <input 
-              type="file" 
-              ref={fileInputRef}
-              onChange={handleImportJSON}
-              accept=".json"
-              className="hidden"
-            />
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="flex-1 flex items-center justify-center gap-1.5 border border-cyber-border bg-slate-950 px-3 py-2.5 rounded text-slate-300 hover:border-cyber-cyan hover:text-cyber-cyan transition-all cursor-pointer"
-            >
-              <Upload size={14} />
-              Restore Backup (.json)
-            </button>
+            {role === 'admin' && (
+              <>
+                <input 
+                  type="file" 
+                  ref={fileInputRef}
+                  onChange={handleImportJSON}
+                  accept=".json"
+                  className="hidden"
+                />
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-1 flex items-center justify-center gap-1.5 border border-cyber-border bg-slate-950 px-3 py-2.5 rounded text-slate-300 hover:border-cyber-cyan hover:text-cyber-cyan transition-all cursor-pointer"
+                >
+                  <Upload size={14} />
+                  Restore Backup (.json)
+                </button>
+              </>
+            )}
           </div>
 
           {importStatus && (

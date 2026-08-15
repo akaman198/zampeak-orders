@@ -29,6 +29,7 @@ export default function DashboardTab({
   const { orders: allOrders, gamers, attendance, updateOrderStatus, role, gamerProfile, isDemo, user, calculatePayroll, getDailyGamerEarnings } = useApp();
 
   const isManager = role === 'admin' || (role === 'gamer' && gamerProfile?.gamer_role === 'technical_manager');
+  const isAdminOrViewer = role === 'admin' || role === 'viewer';
 
   // Filter orders if user is a gamer
   const orders = role === 'gamer' && gamerProfile
@@ -302,10 +303,10 @@ export default function DashboardTab({
         <div>
           <h2 className="text-xl font-mono font-bold tracking-wider text-cyber-cyan uppercase flex items-center gap-2">
             <span className="h-2 w-2 bg-cyber-cyan rounded-full animate-ping"></span>
-            {role === 'admin' ? 'Operational Command Center' : 'Gamer Data Access terminal'}
+            {isAdminOrViewer ? 'Operational Command Center' : 'Gamer Data Access terminal'}
           </h2>
           <p className="text-xs text-slate-400 font-mono mt-1">
-            TARGET: DELTA FORCE MOBILE — {role === 'admin' ? 'AGENT RECORDS & METRIC AUDITS' : `MY PERFORMANCE PORTFOLIO ID: ${gamerProfile?.employee_id}`}
+            TARGET: DELTA FORCE MOBILE — {isAdminOrViewer ? 'AGENT RECORDS & METRIC AUDITS' : `MY PERFORMANCE PORTFOLIO ID: ${gamerProfile?.employee_id}`}
           </p>
           <div className="text-[11px] font-mono text-slate-300 mt-2 flex items-center gap-1.5">
             <span className="text-slate-500 uppercase">OPERATOR:</span>
@@ -333,7 +334,7 @@ export default function DashboardTab({
           <div className="absolute right-2 bottom-2 text-cyber-cyan/10 group-hover:text-cyber-cyan/20 transition-colors">
             <Gamepad2 size={64} />
           </div>
-          <div className="font-mono text-xs text-slate-400 uppercase tracking-widest">{role === 'admin' ? 'Total Missions' : 'My Missions'}</div>
+          <div className="font-mono text-xs text-slate-400 uppercase tracking-widest">{isAdminOrViewer ? 'Total Missions' : 'My Missions'}</div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-3xl font-mono font-black text-cyber-cyan text-glow-cyan">{totalOrders}</span>
             <span className="text-xs text-slate-500 font-mono">Assigned</span>
@@ -349,14 +350,14 @@ export default function DashboardTab({
           <div className="absolute right-2 bottom-2 text-cyber-green/10 group-hover:text-cyber-green/20 transition-colors">
             <DollarSign size={64} />
           </div>
-          <div className="font-mono text-xs text-slate-400 uppercase tracking-widest font-bold">{role === 'admin' ? 'Total Expected Pay' : 'My Earnings'}</div>
+          <div className="font-mono text-xs text-slate-400 uppercase tracking-widest font-bold">{isAdminOrViewer ? 'Total Expected Pay' : 'My Earnings'}</div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-3xl font-mono font-black text-cyber-green text-glow-green">K{totalEarnings}</span>
             <span className="text-xs text-slate-500 font-mono">Kwacha</span>
           </div>
           <div className="mt-2 text-xs text-slate-400 font-mono flex justify-between">
             <span>Farmed: {totalAssetsFarmed}M</span>
-            {role === 'admin' && (
+            {isAdminOrViewer && (
               <span className="text-cyber-green cursor-pointer hover:underline" onClick={() => onNavigate('reports')}>Reports &rarr;</span>
             )}
           </div>
@@ -442,7 +443,7 @@ export default function DashboardTab({
             
             {/* Card 1: Payout Summary */}
             {(() => {
-              if (role === 'admin') {
+              if (isAdminOrViewer) {
                 const activeOperators = gamers.filter(g => g.status === 'active' && g.gamer_role !== 'technical_manager');
               const allPayrolls = activeOperators.map(g => calculatePayroll(g.id, selectedCycle));
               const centralExpectedPayout = allPayrolls.reduce((sum, p) => sum + p.totalPay, 0);
@@ -496,8 +497,8 @@ export default function DashboardTab({
 
             {/* Card 2: List (Depending on Role) */}
             <div className="lg:col-span-3 border border-cyber-border/20 rounded p-4 bg-slate-950/40">
-              {role === 'admin' ? (
-                // Admin View: Breakdown per Gamer
+              {isAdminOrViewer ? (
+                // Admin / Viewer View: Breakdown per Gamer
               <div className="space-y-2">
                 <div className="font-mono text-[10px] text-slate-400 uppercase tracking-wider pb-1.5 border-b border-cyber-border/20">Operational Payroll Ledger</div>
                 {gamers.length === 0 ? (
@@ -671,7 +672,7 @@ export default function DashboardTab({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Donut Chart (Expanded to full width if gamer, to keep layout beautiful) */}
         <div className={`tactical-panel p-5 rounded clip-corners border border-cyber-border/40 flex flex-col justify-between ${
-          role === 'admin' ? 'lg:col-span-1' : 'lg:col-span-3'
+          isAdminOrViewer ? 'lg:col-span-1' : 'lg:col-span-3'
         }`}>
           <div>
             <h3 className="font-mono font-bold text-sm text-slate-300 uppercase tracking-widest border-b border-cyber-border/40 pb-2 mb-4 flex justify-between items-center">
@@ -729,8 +730,8 @@ export default function DashboardTab({
           </div>
         </div>
 
-        {/* Center Widget: Gamer & Team Rankings (Only shown to Admin) */}
-        {role === 'admin' && (
+        {/* Center Widget: Gamer & Team Rankings (Shown to Admin and Viewer) */}
+        {isAdminOrViewer && (
           <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-8">
             
             {/* COLUMN 1: Weekly Performance (Last 7 Days) */}

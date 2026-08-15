@@ -18,7 +18,7 @@ import { User } from '@supabase/supabase-js';
 
 interface AppContextType {
   user: User | null;
-  role: 'admin' | 'gamer';
+  role: 'admin' | 'viewer' | 'gamer';
   gamerProfile: Gamer | null;
   gamers: Gamer[];
   orders: Order[];
@@ -202,7 +202,7 @@ export const getPayPeriodLabel = getAttendancePeriodLabel;
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [role, setRole] = useState<'admin' | 'gamer'>('admin');
+  const [role, setRole] = useState<'admin' | 'viewer' | 'gamer'>('admin');
   const [gamerProfile, setGamerProfile] = useState<Gamer | null>(null);
   const [gamers, setGamers] = useState<Gamer[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -273,9 +273,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (user) {
       const emailLower = user.email?.toLowerCase() || '';
       const matchedGamer = gamers.find(g => g.email?.toLowerCase() === emailLower);
+      const isViewer = emailLower.startsWith('viewer@') || 
+                       emailLower.startsWith('auditor@') || 
+                       emailLower.startsWith('view@') ||
+                       emailLower.includes('+viewer') || 
+                       emailLower.includes('+auditor') || 
+                       (user.user_metadata as any)?.role === 'viewer' || 
+                       (user.user_metadata as any)?.role === 'auditor' ||
+                       (user.app_metadata as any)?.role === 'viewer' ||
+                       (user.app_metadata as any)?.role === 'auditor';
+
       if (matchedGamer) {
         setRole('gamer');
         setGamerProfile(matchedGamer);
+      } else if (isViewer) {
+        setRole('viewer');
+        setGamerProfile(null);
       } else {
         setRole('admin');
         setGamerProfile(null);
@@ -367,6 +380,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setUser(mockUser);
         safeSessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
         return { success: true };
+      } else if ((loginEmail === 'viewer@zampeak.com' || loginEmail === 'auditor@zampeak.com') && (password === 'viewer123' || password === 'admin123')) {
+        const mockUser = { id: 'demo-viewer-id', email: loginEmail, user_metadata: { role: 'viewer' } } as unknown as User;
+        setUser(mockUser);
+        safeSessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
+        return { success: true };
       } else {
         const savedGamers = safeLocalStorage.getItem('zampeak_gamers');
         if (savedGamers) {
@@ -379,7 +397,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             return { success: true };
           }
         }
-        return { success: false, error: 'Invalid credentials. Demo admin defaults: admin@zampeak.com / admin123. Or gamer employee ID with password.' };
+        return { success: false, error: 'Invalid credentials. Demo admin: admin@zampeak.com / admin123, Demo viewer: viewer@zampeak.com / viewer123, or Gamer employee ID with password.' };
       }
     }
   };

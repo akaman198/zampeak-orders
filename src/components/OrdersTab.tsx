@@ -54,6 +54,7 @@ export default function OrdersTab() {
     : allOrders;
 
   const isManager = role === 'admin' || (role === 'gamer' && gamerProfile?.gamer_role === 'technical_manager');
+  const isAdminOrViewer = role === 'admin' || role === 'viewer' || (role === 'gamer' && gamerProfile?.gamer_role === 'technical_manager');
 
   // Get active/standby gamers list (exclude technical manager)
   const getGamerRosterStatus = () => {
@@ -267,8 +268,8 @@ export default function OrdersTab() {
             <option value="Violation">Violation</option>
           </select>
 
-          {/* Gamer Filter (Shown to Admin & Technical Manager) */}
-          {isManager && (
+          {/* Gamer Filter (Shown to Admin, Viewer & Technical Manager) */}
+          {isAdminOrViewer && (
             <select 
               value={gamerFilter} 
               onChange={(e) => setGamerFilter(e.target.value)}
@@ -302,6 +303,11 @@ export default function OrdersTab() {
                 Deploy Order
               </button>
             )
+          )}
+          {role === 'viewer' && (
+            <span className="text-[10px] text-cyber-amber font-mono bg-cyber-amber/10 px-2.5 py-1.5 rounded border border-cyber-amber/30 font-bold uppercase">
+              Audit Mode
+            </span>
           )}
         </div>
       </div>
@@ -631,7 +637,7 @@ export default function OrdersTab() {
 
         {/* Standby panel (1/4 width) */}
         <div className="xl:col-span-1">
-          {isManager && (
+          {isAdminOrViewer && (
             <div className="tactical-panel p-4 rounded clip-corners border border-cyber-border/40 bg-slate-950/20 font-mono text-xs">
               <h3 className="font-bold text-xs text-slate-300 uppercase tracking-widest border-b border-cyber-border/40 pb-2 mb-3 flex items-center justify-between">
                 <span>Operational Roster</span>

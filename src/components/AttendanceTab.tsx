@@ -37,8 +37,8 @@ export default function AttendanceTab() {
     setLocalFarmed({});
   };
 
-  // Ensure only admin/Technical Manager (via UI checks) can see this
-  if (role !== 'admin') {
+  // Ensure only admin or viewer (auditor) can see this
+  if (role !== 'admin' && role !== 'viewer') {
     return (
       <div className="tactical-panel p-6 rounded clip-corners border border-cyber-red/30 bg-cyber-red/5 text-cyber-red font-mono text-center">
         <ShieldAlert className="mx-auto text-cyber-red mb-3 animate-pulse" size={40} />
@@ -156,16 +156,22 @@ export default function AttendanceTab() {
             <div className="text-[9px] text-slate-500 uppercase">
               Shift: Mon-Sat, 9AM to 6PM
             </div>
+            {/* Quick action button for admin */}
+            {role === 'admin' && (
+              <button 
+                onClick={handleMarkAllPresentOnTime}
+                className="flex items-center justify-center gap-1.5 bg-cyber-green text-slate-950 font-mono text-xs uppercase font-black px-4 py-2.5 rounded shadow-neon-green/20 hover:bg-emerald-400 transition-all cursor-pointer w-full"
+              >
+                <CheckCircle2 size={14} />
+                Mark All Present (On-Time)
+              </button>
+            )}
+            {role === 'viewer' && (
+              <span className="flex items-center justify-center font-mono text-xs uppercase font-bold text-cyber-amber border border-cyber-amber/30 bg-cyber-amber/10 px-3 py-2 rounded">
+                Read-Only Audit Mode
+              </span>
+            )}
           </div>
-
-          <button
-            onClick={handleMarkAllPresentOnTime}
-            disabled={filteredGamers.length === 0}
-            className="w-full py-2 bg-cyber-cyan hover:bg-cyan-400 text-slate-950 font-bold rounded shadow-neon-cyan/20 transition-all uppercase tracking-wider cursor-pointer text-center flex items-center justify-center gap-1.5"
-          >
-            <CheckCircle2 size={14} className="text-slate-950" />
-            Mark All On-Time
-          </button>
         </div>
 
         {/* Tactical Roll-Call Metrics */}
@@ -345,11 +351,14 @@ export default function AttendanceTab() {
                               type="number"
                               min="0"
                               step="any"
+                              disabled={role === 'viewer'}
                               value={getGamerFarmedForDate(gamer.id)}
                               onChange={(e) => {
+                                if (role === 'viewer') return;
                                 setLocalFarmed(prev => ({ ...prev, [gamer.id]: e.target.value }));
                               }}
                               onBlur={() => {
+                                if (role === 'viewer') return;
                                 const valStr = localFarmed[gamer.id];
                                 if (valStr === undefined) return;
                                 const val = parseFloat(valStr) || 0;
@@ -366,7 +375,7 @@ export default function AttendanceTab() {
                                 }
                               }}
                               placeholder="0"
-                              className="w-24 bg-slate-950 border border-cyber-border/40 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-cyber-cyan text-right text-xs"
+                              className="w-24 bg-slate-950 border border-cyber-border/40 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-cyber-cyan text-right text-xs disabled:opacity-60 disabled:cursor-not-allowed"
                             />
                             <span className="text-[10px] text-slate-500 font-bold uppercase">M</span>
                           </div>
@@ -375,59 +384,74 @@ export default function AttendanceTab() {
                         )}
                       </td>
                       <td className="py-3.5 px-3">
-                        <div className="flex items-center justify-center gap-2">
-                          {/* Present On-Time */}
-                          <button
-                            onClick={() => handleMarkAttendance(gamer.id, 'present_on_time')}
-                            className={`flex items-center gap-1 px-3 py-1.5 rounded border text-[10px] font-bold uppercase transition-all cursor-pointer ${
-                              currentStatus === 'present_on_time'
-                                ? 'bg-cyber-green text-slate-950 border-cyber-green font-black shadow-neon-green/20'
-                                : 'border-cyber-border text-slate-400 hover:border-cyber-green hover:text-cyber-green hover:bg-cyber-green/5'
-                            }`}
-                          >
-                            <Check size={10} />
-                            On-Time
-                          </button>
+                        {role === 'admin' ? (
+                          <div className="flex items-center justify-center gap-2">
+                            {/* Present On-Time */}
+                            <button
+                              onClick={() => handleMarkAttendance(gamer.id, 'present_on_time')}
+                              className={`flex items-center gap-1 px-3 py-1.5 rounded border text-[10px] font-bold uppercase transition-all cursor-pointer ${
+                                currentStatus === 'present_on_time'
+                                  ? 'bg-cyber-green text-slate-950 border-cyber-green font-black shadow-neon-green/20'
+                                  : 'border-cyber-border text-slate-400 hover:border-cyber-green hover:text-cyber-green hover:bg-cyber-green/5'
+                              }`}
+                            >
+                              <Check size={10} />
+                              On-Time
+                            </button>
 
-                          {/* Present Late */}
-                          <button
-                            onClick={() => handleMarkAttendance(gamer.id, 'present_late')}
-                            className={`flex items-center gap-1 px-3 py-1.5 rounded border text-[10px] font-bold uppercase transition-all cursor-pointer ${
-                              currentStatus === 'present_late'
-                                ? 'bg-cyber-amber text-slate-950 border-cyber-amber font-black shadow-neon-amber/20'
-                                : 'border-cyber-border text-slate-400 hover:border-cyber-amber hover:text-cyber-amber hover:bg-cyber-amber/5'
-                            }`}
-                          >
-                            <Clock size={10} />
-                            Late
-                          </button>
+                            {/* Present Late */}
+                            <button
+                              onClick={() => handleMarkAttendance(gamer.id, 'present_late')}
+                              className={`flex items-center gap-1 px-3 py-1.5 rounded border text-[10px] font-bold uppercase transition-all cursor-pointer ${
+                                currentStatus === 'present_late'
+                                  ? 'bg-cyber-amber text-slate-950 border-cyber-amber font-black shadow-neon-amber/20'
+                                  : 'border-cyber-border text-slate-400 hover:border-cyber-amber hover:text-cyber-amber hover:bg-cyber-amber/5'
+                              }`}
+                            >
+                              <Clock size={10} />
+                              Late
+                            </button>
 
-                          {/* Absent */}
-                          <button
-                            onClick={() => handleMarkAttendance(gamer.id, 'absent')}
-                            className={`flex items-center gap-1 px-3 py-1.5 rounded border text-[10px] font-bold uppercase transition-all cursor-pointer ${
-                              currentStatus === 'absent'
-                                ? 'bg-cyber-red text-slate-950 border-cyber-red font-black shadow-neon-red/20'
-                                : 'border-cyber-border text-slate-400 hover:border-cyber-red hover:text-cyber-red hover:bg-cyber-red/5'
-                            }`}
-                          >
-                            <X size={10} />
-                            Absent
-                          </button>
+                            {/* Absent */}
+                            <button
+                              onClick={() => handleMarkAttendance(gamer.id, 'absent')}
+                              className={`flex items-center gap-1 px-3 py-1.5 rounded border text-[10px] font-bold uppercase transition-all cursor-pointer ${
+                                currentStatus === 'absent'
+                                  ? 'bg-cyber-red text-slate-950 border-cyber-red font-black shadow-neon-red/20'
+                                  : 'border-cyber-border text-slate-400 hover:border-cyber-red hover:text-cyber-red hover:bg-cyber-red/5'
+                              }`}
+                            >
+                              <X size={10} />
+                              Absent
+                            </button>
 
-                          {/* Save Status Spinner/Tick */}
-                          <div className="w-6 h-6 flex items-center justify-center text-[10px]">
-                            {statusState === 'saving' && (
-                              <div className="w-3.5 h-3.5 rounded-full border-2 border-cyber-cyan/15 border-t-cyber-cyan animate-spin"></div>
-                            )}
-                            {statusState === 'success' && (
-                              <Check className="text-cyber-cyan animate-bounce" size={14} />
-                            )}
-                            {statusState === 'error' && (
-                              <ShieldAlert className="text-cyber-red" size={14} />
-                            )}
+                            {/* Save Status Spinner/Tick */}
+                            <div className="w-6 h-6 flex items-center justify-center text-[10px]">
+                              {statusState === 'saving' && (
+                                <div className="w-3.5 h-3.5 rounded-full border-2 border-cyber-cyan/15 border-t-cyber-cyan animate-spin"></div>
+                              )}
+                              {statusState === 'success' && (
+                                <Check className="text-cyber-cyan animate-bounce" size={14} />
+                              )}
+                              {statusState === 'error' && (
+                                <ShieldAlert className="text-cyber-red" size={14} />
+                              )}
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="flex items-center justify-center font-mono">
+                            <span className={`px-3 py-1 rounded text-[10px] font-bold uppercase ${
+                              currentStatus === 'present_on_time' ? 'bg-cyber-green/10 text-cyber-green border border-cyber-green/30' :
+                              currentStatus === 'present_late' ? 'bg-cyber-amber/10 text-cyber-amber border border-cyber-amber/30' :
+                              currentStatus === 'absent' ? 'bg-cyber-red/10 text-cyber-red border border-cyber-red/30' :
+                              'bg-slate-900 text-slate-500 border border-slate-800'
+                            }`}>
+                              {currentStatus === 'present_on_time' ? 'Present (On-Time)' :
+                               currentStatus === 'present_late' ? 'Present (Late)' :
+                               currentStatus === 'absent' ? 'Absent' : 'Unmarked'}
+                            </span>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );
