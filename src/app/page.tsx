@@ -19,15 +19,19 @@ import {
   Lock,
   Key,
   X,
-  Calendar
+  Calendar,
+  Wrench,
+  ShieldAlert,
+  AlertTriangle
 } from 'lucide-react';
 
 export default function Home() {
-  const { user, role, gamerProfile, loading, authLoading, isDemo, gamers, orders, signIn, signUp, signOut, updatePassword } = useApp();
+  const { user, role, gamerProfile, loading, authLoading, isDemo, gamers, orders, signIn, signUp, signOut, updatePassword, isMaintenanceMode, setMaintenanceMode } = useApp();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'gamers' | 'attendance' | 'orders' | 'reports'>('dashboard');
 
   // Auth Screen States
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [showAdminAuth, setShowAdminAuth] = useState(false);
   const [emailOrEmpId, setEmailOrEmpId] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
@@ -117,8 +121,93 @@ export default function Home() {
     );
   }
 
-  // Authentication Required Screen (Login)
+  // Authentication Required Screen (Login or Maintenance Notice)
   if (!user) {
+    // 1. Maintenance Mode Notice Screen for non-authenticated visitors
+    if (isMaintenanceMode && !showAdminAuth) {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center bg-cyber-bg min-h-screen p-4 relative overflow-y-auto font-mono select-none">
+          <div className="absolute inset-0 bg-cyber-grid pointer-events-none opacity-40"></div>
+          
+          {/* Ambient Glow */}
+          <div className="absolute w-[500px] h-[500px] rounded-full bg-cyber-amber/10 blur-[120px] -top-32 -left-32 animate-pulse"></div>
+          <div className="absolute w-[500px] h-[500px] rounded-full bg-cyber-red/10 blur-[120px] -bottom-32 -right-32"></div>
+
+          <div className="w-full max-w-xl tactical-panel p-8 rounded clip-corners border-2 border-cyber-amber/60 bg-cyber-dark/95 relative z-10 shadow-2xl space-y-6">
+            <div className="hud-grid"></div>
+
+            {/* Top Status Banner */}
+            <div className="flex items-center justify-between border-b border-cyber-border/40 pb-4">
+              <div className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded-full bg-cyber-amber animate-ping"></span>
+                <span className="h-3 w-3 rounded-full bg-cyber-amber -ml-5"></span>
+                <span className="text-[11px] font-bold text-cyber-amber tracking-widest uppercase">
+                  STATUS: CODE AMBER // SYSTEM RESTRICTED
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                ZAMPEAK CORP OS
+              </div>
+            </div>
+
+            {/* Center Graphic & Heading */}
+            <div className="text-center py-4 space-y-3">
+              <div className="mx-auto w-16 h-16 bg-cyber-amber/15 rounded-full border border-cyber-amber/50 flex items-center justify-center text-cyber-amber shadow-neon-amber/20 animate-pulse">
+                <Wrench size={32} />
+              </div>
+              <h1 className="text-2xl font-black tracking-widest text-slate-100 uppercase">
+                SCHEDULED MAINTENANCE IN PROGRESS
+              </h1>
+              <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+                Delta Force Mobile Operations Matrix is currently undergoing scheduled infrastructure upgrades and security maintenance.
+              </p>
+            </div>
+
+            {/* Diagnostic Box */}
+            <div className="bg-slate-950/90 border border-cyber-border/60 rounded p-4 text-[11px] space-y-2.5 text-slate-400">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-slate-300">
+                  <Activity size={12} className="text-cyber-amber" /> CORE SERVERS:
+                </span>
+                <span className="text-cyber-amber font-bold uppercase">MAINTENANCE / ISOLATED</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-slate-300">
+                  <Users size={12} className="text-cyber-red" /> OPERATOR / GAMER LOGINS:
+                </span>
+                <span className="text-cyber-red font-bold uppercase">TEMPORARILY SUSPENDED</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-slate-300">
+                  <Database size={12} className="text-cyber-cyan" /> ORDER LEDGER & DATA:
+                </span>
+                <span className="text-cyber-green font-bold uppercase">SECURED & BACKED UP</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-cyber-border/40 pt-2 text-slate-500 text-[10px]">
+                <span>ESTIMATED RESUMPTION:</span>
+                <span className="text-slate-300 font-bold uppercase">Resuming shortly</span>
+              </div>
+            </div>
+
+            {/* Admin Override Action */}
+            <div className="border-t border-cyber-border/40 pt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+                Central Administration Clearance Required
+              </span>
+              <button
+                onClick={() => { setShowAdminAuth(true); setAuthError(''); }}
+                className="flex items-center gap-2 font-mono text-xs uppercase font-bold text-cyber-cyan border border-cyber-cyan/40 bg-cyber-cyan/10 px-4 py-2 rounded hover:bg-cyber-cyan/25 hover:border-cyber-cyan transition-all cursor-pointer shadow-neon-cyan/10"
+              >
+                <Lock size={12} />
+                Admin Terminal Override
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 2. Standard Login / Admin Override Form
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-cyber-bg min-h-screen p-4 relative overflow-y-auto font-mono">
         <div className="absolute inset-0 bg-cyber-grid pointer-events-none"></div>
@@ -129,6 +218,21 @@ export default function Home() {
         <div className="w-full max-w-md tactical-panel p-6 rounded clip-corners border border-cyber-cyan/30 bg-cyber-dark/80 relative z-10 shadow-2xl">
           <div className="hud-grid"></div>
 
+          {/* Maintenance Mode notice if accessing via Admin gate */}
+          {isMaintenanceMode && (
+            <div className="mb-4 p-2.5 bg-cyber-amber/10 border border-cyber-amber/30 text-cyber-amber rounded text-[10px] flex items-center justify-between">
+              <span className="flex items-center gap-1.5 font-bold uppercase">
+                <Wrench size={12} /> Maintenance Mode Active
+              </span>
+              <button 
+                onClick={() => setShowAdminAuth(false)}
+                className="text-slate-400 hover:text-slate-200 underline cursor-pointer text-[9px]"
+              >
+                Exit Gate
+              </button>
+            </div>
+          )}
+
           <div className="text-center border-b border-cyber-border/40 pb-5 mb-6">
             <div className="mx-auto w-12 h-12 bg-cyber-cyan/15 rounded border border-cyber-cyan/35 flex items-center justify-center text-cyber-cyan glow-pulse-cyan mb-3">
               <Lock size={20} />
@@ -137,7 +241,7 @@ export default function Home() {
               ZAMPEAK <span className="text-cyber-cyan text-glow-cyan text-[10px] font-bold tracking-normal bg-cyber-cyan/15 px-1.5 py-0.5 rounded border border-cyber-cyan/20">OS</span>
             </h2>
             <p className="text-[9px] text-slate-500 uppercase tracking-widest mt-1">
-              Delta Force Mobile Operations Portal
+              {isMaintenanceMode ? 'Central Administrator Terminal Access' : 'Delta Force Mobile Operations Portal'}
             </p>
           </div>
 
@@ -158,8 +262,12 @@ export default function Home() {
               <div className="p-3 border border-cyber-amber/35 bg-cyber-amber/5 text-cyber-amber rounded text-[10px] leading-relaxed space-y-1">
                 <div><strong>DEMO AUTH ACTIVE:</strong> Sign in with:</div>
                 <div><span className="text-slate-300 font-bold">Admin:</span> admin@zampeak.com / admin123</div>
-                <div><span className="text-slate-300 font-bold">Viewer (Auditor):</span> viewer@zampeak.com / viewer123</div>
-                <div><span className="text-slate-300 font-bold">Gamer:</span> Recruit a gamer employee ID (e.g. ZP-101) with default password, and sign in directly!</div>
+                {!isMaintenanceMode && (
+                  <>
+                    <div><span className="text-slate-300 font-bold">Viewer (Auditor):</span> viewer@zampeak.com / viewer123</div>
+                    <div><span className="text-slate-300 font-bold">Gamer:</span> Recruit a gamer employee ID (e.g. ZP-101) with default password, and sign in directly!</div>
+                  </>
+                )}
               </div>
             )}
 
@@ -175,7 +283,7 @@ export default function Home() {
                   setEmailOrEmpId(e.target.value);
                   setAuthError('');
                 }}
-                placeholder={authMode === 'signin' ? "e.g. ZP-101 or admin@zampeak.com" : "admin@zampeak.com"}
+                placeholder={authMode === 'signin' ? (isMaintenanceMode ? "admin@zampeak.com" : "e.g. ZP-101 or admin@zampeak.com") : "admin@zampeak.com"}
                 required
                 className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2.5 text-slate-200 focus:outline-none focus:border-cyber-cyan"
               />
@@ -233,6 +341,40 @@ export default function Home() {
     );
   }
 
+  // 3. Maintenance Block Screen for Logged In Non-Admin users
+  if (isMaintenanceMode && role !== 'admin') {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center bg-cyber-bg min-h-screen p-4 font-mono select-none">
+        <div className="absolute inset-0 bg-cyber-grid pointer-events-none opacity-30"></div>
+        <div className="w-full max-w-md tactical-panel p-8 rounded clip-corners border-2 border-cyber-amber/60 bg-cyber-dark/95 relative z-10 shadow-2xl text-center space-y-5">
+          <div className="hud-grid"></div>
+          
+          <div className="mx-auto w-16 h-16 bg-cyber-amber/15 rounded-full border border-cyber-amber/50 flex items-center justify-center text-cyber-amber animate-pulse">
+            <AlertTriangle size={32} />
+          </div>
+
+          <h2 className="text-xl font-black uppercase text-slate-100 tracking-wider">
+            OPERATOR ACCESS RESTRICTED
+          </h2>
+
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Central Command has placed the system into maintenance mode. All operator and auditor feeds are temporarily suspended.
+          </p>
+
+          <div className="border-t border-cyber-border/40 pt-4">
+            <button
+              onClick={signOut}
+              className="w-full py-2.5 bg-cyber-red/20 hover:bg-cyber-red/30 border border-cyber-red/40 text-cyber-red font-bold rounded uppercase tracking-wider text-xs transition-all cursor-pointer flex items-center justify-center gap-2"
+            >
+              <LogOut size={14} />
+              Sign Out Terminal
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Dashboard Interface (Logged In)
   return (
     <div className="flex-1 flex flex-col min-h-screen">
@@ -279,6 +421,23 @@ export default function Home() {
                 <span className="text-cyber-green font-bold">CLOUD CLUSTER</span>
               )}</span>
             </div>
+            {role === 'admin' && (
+              <>
+                <div className="h-3 w-px bg-cyber-border"></div>
+                <button
+                  onClick={() => setMaintenanceMode(!isMaintenanceMode)}
+                  title={isMaintenanceMode ? "Maintenance Mode is ACTIVE (Click to turn OFF)" : "Maintenance Mode is OFF (Click to turn ON)"}
+                  className={`flex items-center gap-1.5 font-mono text-[9px] uppercase font-bold px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                    isMaintenanceMode 
+                      ? 'bg-cyber-amber/20 border-cyber-amber text-cyber-amber shadow-neon-amber/25 animate-pulse' 
+                      : 'bg-slate-900 border-cyber-border/60 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Wrench size={10} />
+                  <span>{isMaintenanceMode ? 'MAINTENANCE: ACTIVE' : 'MAINTENANCE: OFF'}</span>
+                </button>
+              </>
+            )}
           </div>
 
           {/* Tab Navigation & Log Out */}

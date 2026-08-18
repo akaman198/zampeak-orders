@@ -78,6 +78,8 @@ interface AppContextType {
   getDailyGamerEarnings: (cycleLabel: string, targetGamerId?: string) => DailyGamerEarnings[];
   importBackupData: (gamers: Gamer[], orders: Order[], attendance?: AttendanceRecord[]) => Promise<{ success: boolean; error?: string }>;
   refreshData: () => Promise<void>;
+  isMaintenanceMode: boolean;
+  setMaintenanceMode: (active: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -210,6 +212,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [isDemo, setIsDemo] = useState(!isSupabaseConfigured);
+  const [isMaintenanceMode, setIsMaintenanceModeState] = useState<boolean>(() => {
+    const saved = safeLocalStorage.getItem('zampeak_maintenance_mode');
+    if (saved !== null) {
+      return saved === 'true';
+    }
+    return true; // Default to true (Maintenance Mode ON)
+  });
+
+  const setMaintenanceMode = (active: boolean) => {
+    setIsMaintenanceModeState(active);
+    safeLocalStorage.setItem('zampeak_maintenance_mode', active ? 'true' : 'false');
+  };
 
   // Initialize and check auth session
   useEffect(() => {
@@ -363,6 +377,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Auth Operations
   const signIn = async (emailOrEmpId: string, password: string) => {
     const loginEmail = getEmailFromInput(emailOrEmpId);
+
+    // Maintenance Mode Check: block non-admins from logging in
+    if (isMaintenanceMode) {
+      const isGamerOrViewer = loginEmail.endsWith('@gamers.zampeak.com') || 
+                              loginEmail.startsWith('viewer@') || 
+                              loginEmail.startsWith('auditor@');
+      if (isGamerOrViewer) {
+        return { 
+          success: false, 
+          error: 'SYSTEM MAINTENANCE ACTIVE: Operator and auditor access is temporarily suspended. Only Central Administration may access the terminal.' 
+        };
+      }
+    }
 
     if (!isDemo && supabase) {
       try {
@@ -1261,6 +1288,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         getDailyGamerEarnings,
         importBackupData,
         refreshData,
+        isMaintenanceMode,
+        setMaintenanceMode,
       }}
     >
       {children}
