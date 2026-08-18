@@ -12,7 +12,10 @@ import {
   AlertTriangle,
   Copy,
   Check,
-  Package
+  Package,
+  Calendar,
+  Search,
+  FileText
 } from 'lucide-react';
 
 const formatM = (val: number) => {
@@ -32,6 +35,10 @@ export default function ReportsTab() {
   const [selectedTeamVolumeDate, setSelectedTeamVolumeDate] = useState<string>(todayStr);
   const [selectedGamerFilter, setSelectedGamerFilter] = useState<string>('all');
   const [selectedOrderGamerFilter, setSelectedOrderGamerFilter] = useState<string>('all');
+  const [orderReportMode, setOrderReportMode] = useState<'cycle' | 'custom'>('custom');
+  const [customStartDate, setCustomStartDate] = useState<string>('2026-07-15');
+  const [customEndDate, setCustomEndDate] = useState<string>('2026-08-15');
+  const [completedOrderSearch, setCompletedOrderSearch] = useState<string>('');
 
   // Generate list of cycles
   const getAvailablePayCycles = () => {
@@ -248,6 +255,44 @@ export default function ReportsTab() {
   const totalAssetsVolumeMonth = monthlyOrderStats.reduce((sum, s) => sum + s.totalAssetsVolumeM, 0);
   const totalOrderPayoutMonth = monthlyOrderStats.reduce((sum, s) => sum + s.totalPayout, 0);
 
+  // Completed Orders List for Excel Export (15 Jul to 15 Aug / Range)
+  const getCompletedOrdersList = () => {
+    return orders.filter(o => {
+      if (o.status !== 'Completed') return false;
+      const compDate = (o.completed_date || o.start_date).slice(0, 10);
+      
+      if (orderReportMode === 'custom') {
+        if (customStartDate && compDate < customStartDate) return false;
+        if (customEndDate && compDate > customEndDate) return false;
+        return true;
+      } else {
+        return getOrderPeriodLabel(o.completed_date || o.start_date) === selectedCycle;
+      }
+    }).map(o => {
+      const gamer = gamers.find(g => g.id === o.gamer_id);
+      const compDate = (o.completed_date || o.start_date).slice(0, 10);
+      return {
+        id: o.id,
+        orderNumber: o.order_number,
+        gamerName: gamer?.name || 'Unknown Operator',
+        employeeId: gamer?.employee_id || '',
+        orderVolume: Number(o.size_millions || 0),
+        dateCompleted: compDate,
+      };
+    }).sort((a, b) => b.dateCompleted.localeCompare(a.dateCompleted) || b.orderVolume - a.orderVolume);
+  };
+
+  const completedOrdersList = getCompletedOrdersList();
+  const filteredCompletedOrders = completedOrdersList.filter(o => {
+    if (!completedOrderSearch.trim()) return true;
+    const q = completedOrderSearch.toLowerCase();
+    return o.orderNumber.toLowerCase().includes(q) || 
+           o.gamerName.toLowerCase().includes(q) || 
+           o.employeeId.toLowerCase().includes(q) ||
+           o.dateCompleted.includes(q);
+  });
+  const totalCompletedVolumeExcel = completedOrdersList.reduce((sum, o) => sum + o.orderVolume, 0);
+
   // 2. Export functions
   const exportToCSV = () => {
     const headers = [
@@ -345,6 +390,44 @@ export default function ReportsTab() {
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
     link.setAttribute("download", `zampeak_monthly_order_quantities_${selectedCycle.replace(' ', '_').replace(',', '')}_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportCompletedOrdersExcel = () => {
+    const headers = [
+      'Order Number',
+      'Gamer Name',
+      'Order Volume (M)',
+      'Date Completed'
+    ];
+
+    const rows = completedOrdersList.map(o => [
+      `"${o.orderNumber}"`,
+      `"${o.gamerName}"`,
+      formatM(o.orderVolume),
+      `"${o.dateCompleted}"`
+    ]);
+
+    // Append total summary row
+    rows.push([
+      '"TOTAL"',
+      `"${completedOrdersList.length} Completed Orders"`,
+      formatM(totalCompletedVolumeExcel),
+      '""'
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    const filename = orderReportMode === 'custom'
+      ? `zampeak_completed_orders_${customStartDate}_to_${customEndDate}.csv`
+      : `zampeak_completed_orders_${selectedCycle.replace(' ', '_').replace(',', '')}.csv`;
+    link.setAttribute("download", filename);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -504,6 +587,14 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
           </div>
           
           <div className="flex flex-wrap gap-2">
+            <button 
+              onClick={exportCompletedOrdersExcel}
+              className="flex items-center gap-1.5 font-mono text-xs uppercase font-bold border border-cyber-green/40 bg-cyber-green/10 px-3 py-2 rounded text-cyber-green hover:bg-cyber-green/20 transition-all cursor-pointer shadow-neon-green/10"
+              title="Download Completed Orders Excel (Order Number, Gamer Name, Order Volume, Date Completed)"
+            >
+              <FileSpreadsheet size={14} />
+              Export Completed Orders Excel
+            </button>
             <button 
               onClick={exportToCSV}
               className="flex items-center gap-1.5 font-mono text-xs uppercase font-bold border border-cyber-border bg-slate-900 px-3 py-2 rounded text-slate-300 hover:border-cyber-cyan hover:text-cyber-cyan transition-all cursor-pointer"
@@ -774,6 +865,161 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                           </td>
                           <td className="py-3 px-3 text-right font-black text-slate-400">
                             {totalCompletedOrdersMonth > 0 ? `${formatM(totalOrderVolumeMonth / totalCompletedOrdersMonth)}M` : '-'}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Dedicated Completed Orders Ledger (Excel Report) */}
+              <div className="mt-8 pt-6 border-t border-cyber-border/40">
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 mb-4">
+                  <div>
+                    <h3 className="font-mono font-bold text-sm text-cyber-green uppercase tracking-widest flex items-center gap-2">
+                      <FileSpreadsheet size={16} className="text-cyber-green" />
+                      <span>Completed Orders Ledger (Excel Report)</span>
+                      <span className="text-[9px] text-cyber-green font-normal bg-cyber-green/10 px-2 py-0.5 rounded border border-cyber-green/30">
+                        {completedOrdersList.length} Orders
+                      </span>
+                    </h3>
+                    <p className="text-[10px] text-slate-500 font-mono mt-0.5 uppercase tracking-wider">
+                      {orderReportMode === 'custom' 
+                        ? `Custom period: ${customStartDate} to ${customEndDate}` 
+                        : `Cycle: ${selectedCycle}`} • Exact columns: Order Number, Gamer Name, Order Volume, Date Completed
+                    </p>
+                  </div>
+
+                  {/* Filter & Export Controls */}
+                  <div className="flex flex-wrap items-center gap-2.5 font-mono text-xs print:hidden w-full lg:w-auto">
+                    {/* Period Mode Toggle */}
+                    <div className="flex items-center rounded border border-cyber-border/60 bg-slate-950 p-0.5">
+                      <button
+                        onClick={() => setOrderReportMode('custom')}
+                        className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all cursor-pointer ${
+                          orderReportMode === 'custom' 
+                            ? 'bg-cyber-green text-slate-950 shadow-neon-green/20' 
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        15 Jul - 15 Aug / Custom
+                      </button>
+                      <button
+                        onClick={() => setOrderReportMode('cycle')}
+                        className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all cursor-pointer ${
+                          orderReportMode === 'cycle' 
+                            ? 'bg-cyber-cyan text-slate-950 shadow-neon-cyan/20' 
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Pay Cycle
+                      </button>
+                    </div>
+
+                    {/* Custom Date Pickers */}
+                    {orderReportMode === 'custom' ? (
+                      <div className="flex items-center gap-1.5 bg-slate-950 border border-cyber-border/60 rounded px-2 py-1">
+                        <Calendar size={12} className="text-cyber-green" />
+                        <input
+                          type="date"
+                          value={customStartDate}
+                          onChange={(e) => setCustomStartDate(e.target.value)}
+                          className="bg-transparent text-slate-200 text-[11px] focus:outline-none cursor-pointer"
+                        />
+                        <span className="text-slate-500 text-[10px]">to</span>
+                        <input
+                          type="date"
+                          value={customEndDate}
+                          onChange={(e) => setCustomEndDate(e.target.value)}
+                          className="bg-transparent text-slate-200 text-[11px] focus:outline-none cursor-pointer"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={selectedCycle}
+                          onChange={(e) => setSelectedCycle(e.target.value)}
+                          className="bg-slate-950 border border-cyber-border rounded px-2.5 py-1 text-cyber-cyan text-xs font-mono focus:outline-none focus:border-cyber-cyan cursor-pointer"
+                        >
+                          {availableCycles.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Search Input */}
+                    <div className="relative">
+                      <Search className="absolute left-2 top-2 text-slate-500" size={12} />
+                      <input
+                        type="text"
+                        placeholder="Search order / gamer..."
+                        value={completedOrderSearch}
+                        onChange={(e) => setCompletedOrderSearch(e.target.value)}
+                        className="bg-slate-950 border border-cyber-border/60 rounded pl-7 pr-2.5 py-1 text-slate-200 text-xs focus:outline-none focus:border-cyber-green w-40"
+                      />
+                    </div>
+
+                    {/* Download Excel Button */}
+                    <button
+                      onClick={exportCompletedOrdersExcel}
+                      className="flex items-center gap-1.5 font-mono text-[11px] uppercase font-bold border border-cyber-green bg-cyber-green text-slate-950 px-3 py-1.5 rounded hover:bg-emerald-400 transition-all cursor-pointer shadow-neon-green/20"
+                    >
+                      <Download size={12} />
+                      Download Excel (.csv)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Table of Completed Orders */}
+                {filteredCompletedOrders.length === 0 ? (
+                  <div className="py-8 text-center text-slate-500 font-mono text-xs border border-dashed border-cyber-border/40 rounded bg-slate-950/20">
+                    NO COMPLETED ORDERS RECORDED FOR THE SELECTED PERIOD ({orderReportMode === 'custom' ? `${customStartDate} to ${customEndDate}` : selectedCycle}).
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left font-mono border-collapse">
+                      <thead>
+                        <tr className="border-b border-cyber-border/60 text-slate-400 uppercase text-[10px] bg-slate-950/40">
+                          <th className="py-2.5 px-3">Order Number</th>
+                          <th className="py-2.5 px-3">Gamer Name</th>
+                          <th className="py-2.5 px-3 text-right">Order Volume (M)</th>
+                          <th className="py-2.5 px-3 text-center">Date Completed</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-cyber-border/20 text-xs">
+                        {filteredCompletedOrders.map((item) => (
+                          <tr key={item.id} className="hover:bg-slate-900/30 transition-all">
+                            <td className="py-2.5 px-3 font-bold text-cyber-cyan select-all">
+                              {item.orderNumber}
+                            </td>
+                            <td className="py-2.5 px-3 font-bold text-slate-200">
+                              {item.gamerName}
+                              {item.employeeId && (
+                                <span className="text-[10px] text-slate-500 ml-1.5 font-normal">({item.employeeId})</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-black text-cyber-green">
+                              {formatM(item.orderVolume)}M
+                            </td>
+                            <td className="py-2.5 px-3 text-center text-slate-300">
+                              {item.dateCompleted}
+                            </td>
+                          </tr>
+                        ))}
+
+                        {/* Totals Summary Row */}
+                        <tr className="border-t-2 border-cyber-green bg-slate-950/90 font-bold text-slate-200 text-[11px]">
+                          <td className="py-3 px-3 uppercase font-black text-cyber-green">TOTALS</td>
+                          <td className="py-3 px-3 text-slate-300 font-bold">
+                            {completedOrdersList.length} Completed Orders
+                          </td>
+                          <td className="py-3 px-3 text-right font-black text-cyber-green text-sm">
+                            {formatM(totalCompletedVolumeExcel)}M
+                          </td>
+                          <td className="py-3 px-3 text-center text-slate-500 text-[10px]">
+                            {orderReportMode === 'custom' ? `${customStartDate} → ${customEndDate}` : selectedCycle}
                           </td>
                         </tr>
                       </tbody>
