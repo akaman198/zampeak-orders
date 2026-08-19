@@ -12,7 +12,11 @@ import {
   User,
   Award,
   Key,
-  ShieldCheck
+  ShieldCheck,
+  UserCheck,
+  UserX,
+  Search,
+  Power
 } from 'lucide-react';
 
 const formatM = (val: number) => {
@@ -21,7 +25,7 @@ const formatM = (val: number) => {
 };
 
 export default function GamersTab() {
-  const { gamers, orders, addGamer, updateGamer, deleteGamer, resetGamerPassword, calculatePayroll, getDailyGamerEarnings, role } = useApp();
+  const { gamers, orders, addGamer, updateGamer, toggleGamerStatus, deleteGamer, resetGamerPassword, calculatePayroll, getDailyGamerEarnings, role } = useApp();
 
   const todayStr = new Date().toISOString().slice(0, 10);
   // Component States
@@ -29,6 +33,8 @@ export default function GamersTab() {
   const [isAdding, setIsAdding] = useState(false);
   const [isEditing, setIsEditing] = useState<Gamer | null>(null);
   const [dossierDailyDateFilter, setDossierDailyDateFilter] = useState<string>(todayStr);
+  const [gamerRosterFilter, setGamerRosterFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [rosterSearchQuery, setRosterSearchQuery] = useState('');
 
   // Form Fields
   const [name, setName] = useState('');
@@ -150,6 +156,24 @@ export default function GamersTab() {
       alert(`Error: ${res.error}`);
     }
   };
+
+  const handleToggleStatus = async (gamer: Gamer, newStatus: 'active' | 'inactive') => {
+    const actionLabel = newStatus === 'inactive' ? 'DEACTIVATE' : 'REACTIVATE';
+    const confirmMsg = newStatus === 'inactive'
+      ? `Confirm ${actionLabel}: Mark ${gamer.name} (${gamer.employee_id}) as INACTIVE (Stopped Work)?\n\nThey will be excluded from new order assignments and daily roll-calls while keeping all previous stats and history.`
+      : `Confirm ${actionLabel}: Reactivate ${gamer.name} (${gamer.employee_id}) and set account status to ACTIVE (On Duty)?`;
+    
+    if (!confirm(confirmMsg)) return;
+
+    const res = await toggleGamerStatus(gamer.id, newStatus);
+    if (res.success) {
+      if (selectedGamer?.id === gamer.id) {
+        setSelectedGamer({ ...selectedGamer, status: newStatus });
+      }
+    } else {
+      alert(`Error updating operational status: ${res.error}`);
+    }
+  };
   const startEdit = (gamer: Gamer) => {
     setIsEditing(gamer);
     setName(gamer.name);
@@ -199,11 +223,24 @@ export default function GamersTab() {
     };
   };
 
+  const activeGamersCount = gamers.filter(g => g.status === 'active').length;
+  const inactiveGamersCount = gamers.filter(g => g.status === 'inactive').length;
+
+  const filteredRosterGamers = gamers.filter(g => {
+    if (gamerRosterFilter === 'active' && g.status !== 'active') return false;
+    if (gamerRosterFilter === 'inactive' && g.status !== 'inactive') return false;
+    if (rosterSearchQuery.trim()) {
+      const q = rosterSearchQuery.toLowerCase();
+      return g.name.toLowerCase().includes(q) || g.employee_id.toLowerCase().includes(q);
+    }
+    return true;
+  });
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Left Column: Dossier Lists */}
       <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 lg:col-span-1 flex flex-col">
-        <div className="flex justify-between items-center border-b border-cyber-border/40 pb-3 mb-4">
+        <div className="flex justify-between items-center border-b border-cyber-border/40 pb-3 mb-3">
           <h3 className="font-mono font-bold text-sm text-slate-300 uppercase tracking-widest flex items-center gap-2">
             <User size={16} className="text-cyber-cyan" />
             Gamer Dossiers
@@ -223,14 +260,54 @@ export default function GamersTab() {
           )}
         </div>
 
+        {/* Status Filter Tabs */}
+        <div className="grid grid-cols-3 gap-1 mb-2.5 p-1 bg-slate-950 rounded border border-cyber-border/40 font-mono text-[10px]">
+          <button
+            onClick={() => setGamerRosterFilter('all')}
+            className={`py-1 rounded font-bold uppercase transition-all cursor-pointer text-center ${
+              gamerRosterFilter === 'all' ? 'bg-cyber-cyan text-slate-950 shadow-neon-cyan/10' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            All ({gamers.length})
+          </button>
+          <button
+            onClick={() => setGamerRosterFilter('active')}
+            className={`py-1 rounded font-bold uppercase transition-all cursor-pointer text-center ${
+              gamerRosterFilter === 'active' ? 'bg-cyber-green text-slate-950 shadow-neon-green/10' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Active ({activeGamersCount})
+          </button>
+          <button
+            onClick={() => setGamerRosterFilter('inactive')}
+            className={`py-1 rounded font-bold uppercase transition-all cursor-pointer text-center ${
+              gamerRosterFilter === 'inactive' ? 'bg-cyber-red text-slate-950 shadow-neon-red/10' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Inactive ({inactiveGamersCount})
+          </button>
+        </div>
+
+        {/* Search Input */}
+        <div className="relative mb-3">
+          <Search className="absolute left-2.5 top-2.5 text-slate-500" size={12} />
+          <input
+            type="text"
+            placeholder="Filter gamer name / ID..."
+            value={rosterSearchQuery}
+            onChange={(e) => setRosterSearchQuery(e.target.value)}
+            className="w-full bg-slate-950 border border-cyber-border/40 rounded pl-7 pr-3 py-1.5 text-slate-200 text-xs font-mono focus:outline-none focus:border-cyber-cyan"
+          />
+        </div>
+
         {/* Gamers List */}
-        {gamers.length === 0 ? (
+        {filteredRosterGamers.length === 0 ? (
           <div className="py-8 text-center text-slate-500 font-mono text-xs">
-            NO GAMERS REGISTERED IN COMMAND DATA.
+            {gamers.length === 0 ? 'NO GAMERS REGISTERED IN COMMAND DATA.' : 'NO GAMERS MATCHING SELECTED FILTER.'}
           </div>
         ) : (
           <div className="space-y-2 overflow-y-auto max-h-[500px] pr-1">
-            {gamers.map((gamer) => {
+            {filteredRosterGamers.map((gamer) => {
               const metrics = getGamerProfileMetrics(gamer.id);
               const isSelected = selectedGamer?.id === gamer.id;
 
@@ -611,6 +688,17 @@ export default function GamersTab() {
                       </span>
                     )}
                     
+                    {/* Status Display Pill */}
+                    {selectedGamer.status === 'inactive' ? (
+                      <span className="flex items-center gap-1 text-cyber-red bg-cyber-red/10 border border-cyber-red/30 px-2 py-0.5 rounded text-[9px] font-bold uppercase">
+                        <UserX size={10} /> INACTIVE (STOPPED WORK)
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-cyber-green bg-cyber-green/10 border border-cyber-green/20 px-2 py-0.5 rounded text-[9px] font-bold uppercase">
+                        <UserCheck size={10} /> ACTIVE (ON DUTY)
+                      </span>
+                    )}
+
                     {/* Default Password / Roster Status Display */}
                     {selectedGamer.default_password ? (
                       <span className="flex items-center gap-1 text-cyber-amber bg-cyber-amber/10 border border-cyber-amber/20 px-1.5 py-0.5 rounded text-[9px] font-bold">
@@ -618,7 +706,7 @@ export default function GamersTab() {
                       </span>
                     ) : (
                       <span className="flex items-center gap-1 text-cyber-green bg-cyber-green/10 border border-cyber-green/20 px-1.5 py-0.5 rounded text-[9px] font-bold">
-                        <ShieldCheck size={10} /> DOSSIER REGISTERED & ACTIVE
+                        <ShieldCheck size={10} /> DOSSIER REGISTERED
                       </span>
                     )}
 
@@ -629,7 +717,28 @@ export default function GamersTab() {
                 </div>
                 
                 {role === 'admin' ? (
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 items-center">
+                    {/* 1-Click Activate / Deactivate Toggle */}
+                    {selectedGamer.status === 'active' ? (
+                      <button 
+                        onClick={() => handleToggleStatus(selectedGamer, 'inactive')}
+                        className="p-2 border border-cyber-border hover:border-cyber-red rounded bg-slate-950 hover:bg-cyber-red/10 text-slate-400 hover:text-cyber-red transition-all cursor-pointer flex items-center gap-1.5"
+                        title="Deactivate Gamer Account (Mark as Stopped Work)"
+                      >
+                        <UserX size={14} />
+                        <span className="text-[10px] font-bold uppercase hidden sm:inline">Deactivate</span>
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => handleToggleStatus(selectedGamer, 'active')}
+                        className="p-2 border border-cyber-green/40 hover:border-cyber-green rounded bg-cyber-green/10 hover:bg-cyber-green/20 text-cyber-green transition-all cursor-pointer flex items-center gap-1.5 shadow-neon-green/10"
+                        title="Reactivate Gamer Account (Set Active On Duty)"
+                      >
+                        <UserCheck size={14} />
+                        <span className="text-[10px] font-bold uppercase hidden sm:inline">Reactivate</span>
+                      </button>
+                    )}
+
                     <button 
                       onClick={() => handleResetPassword(selectedGamer)}
                       className="p-2 border border-cyber-border hover:border-cyber-amber rounded bg-slate-950 hover:bg-cyber-amber/10 text-slate-400 hover:text-cyber-amber transition-all cursor-pointer"

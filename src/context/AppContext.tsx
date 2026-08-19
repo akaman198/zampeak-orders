@@ -50,6 +50,7 @@ interface AppContextType {
     phone?: string,
     status?: 'active' | 'inactive'
   ) => Promise<{ success: boolean; error?: string }>;
+  toggleGamerStatus: (id: string, status: 'active' | 'inactive') => Promise<{ success: boolean; error?: string }>;
   deleteGamer: (id: string) => Promise<{ success: boolean; error?: string }>;
   resetGamerPassword: (id: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
   addOrder: (
@@ -418,6 +419,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const localGamers: Gamer[] = JSON.parse(savedGamers);
           const matched = localGamers.find(g => g.email?.toLowerCase() === loginEmail.toLowerCase());
           if (matched && password === (matched.default_password || 'gamer123')) {
+            if (matched.status === 'inactive') {
+              return { 
+                success: false, 
+                error: 'ACCOUNT INACTIVE: Your operator dossier is marked as inactive (stopped work). Contact Central Administration.' 
+              };
+            }
             const mockUser = { id: matched.id, email: loginEmail } as User;
             setUser(mockUser);
             safeSessionStorage.setItem('zampeak_user', JSON.stringify(mockUser));
@@ -691,6 +698,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }
           : g
       );
+      setGamers(updated);
+      safeLocalStorage.setItem('zampeak_gamers', JSON.stringify(updated));
+      return { success: true };
+    }
+  };
+
+  const toggleGamerStatus = async (id: string, newStatus: 'active' | 'inactive') => {
+    if (!isDemo && supabase) {
+      try {
+        const { error } = await supabase.from('gamers').update({ status: newStatus }).eq('id', id);
+        if (error) throw error;
+        setGamers((prev) =>
+          prev.map((g) => (g.id === id ? { ...g, status: newStatus } : g))
+        );
+        return { success: true };
+      } catch (err: any) {
+        console.error('Supabase error, updating gamer status:', err);
+        return { success: false, error: err.message };
+      }
+    } else {
+      const updated = gamers.map((g) => (g.id === id ? { ...g, status: newStatus } : g));
       setGamers(updated);
       safeLocalStorage.setItem('zampeak_gamers', JSON.stringify(updated));
       return { success: true };
@@ -1277,6 +1305,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updatePassword,
         addGamer,
         updateGamer,
+        toggleGamerStatus,
         deleteGamer,
         resetGamerPassword,
         addOrder,

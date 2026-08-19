@@ -75,10 +75,12 @@ export default function OrdersTab() {
   const standbyGamers = gamerRosterStatus.filter(r => !r.isDeployed);
   const deployedGamers = gamerRosterStatus.filter(r => r.isDeployed);
 
-  // Filter gamers list in Select dropdown
+  // Filter gamers list in Select dropdown (Only active gamers)
   const filteredGamersForSelect = gamers.filter(g => 
-    g.name.toLowerCase().includes(gamerSearchQuery.toLowerCase()) ||
-    g.employee_id.toLowerCase().includes(gamerSearchQuery.toLowerCase())
+    g.status === 'active' && (
+      g.name.toLowerCase().includes(gamerSearchQuery.toLowerCase()) ||
+      g.employee_id.toLowerCase().includes(gamerSearchQuery.toLowerCase())
+    )
   );
 
   // Trigger payout auto-update when sizeMillions changes (unless overridden)
