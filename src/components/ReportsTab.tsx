@@ -549,9 +549,28 @@ export default function ReportsTab() {
     window.print();
   };
 
-  // SQL Schema Script to create tables in Supabase
-  const supabaseSQL = `-- 1. Create GAMERS Table
-CREATE TABLE public.gamers (
+  // SQL Schema Script to create / update tables in Supabase
+  const supabaseSQL = `-- =========================================================================
+-- RUN THIS IN SUPABASE SQL EDITOR TO UPDATE YOUR EXISTING TABLES
+-- =========================================================================
+-- 1. Update ORDERS table for milestone progress & dual runner support
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS progress_millions NUMERIC DEFAULT 0;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS co_gamer_id UUID REFERENCES public.gamers(id) ON DELETE SET NULL;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS completed_date DATE;
+
+-- 2. Update ATTENDANCE table for overtime hours tracking
+ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS normal_overtime_hours NUMERIC DEFAULT 0;
+ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS holiday_overtime_hours NUMERIC DEFAULT 0;
+
+-- 3. Update GAMERS table for status & custom adjustments
+ALTER TABLE public.gamers ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE public.gamers ADD COLUMN IF NOT EXISTS bonus_adjustment NUMERIC DEFAULT 0;
+
+-- =========================================================================
+-- FULL FRESH TABLE DEFINITIONS (If setting up a new project)
+-- =========================================================================
+-- 1. Create GAMERS Table
+CREATE TABLE IF NOT EXISTS public.gamers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     employee_id TEXT UNIQUE NOT NULL,
@@ -562,11 +581,12 @@ CREATE TABLE public.gamers (
     level TEXT NOT NULL DEFAULT 'beginner',
     gamer_role TEXT NOT NULL DEFAULT 'gamer',
     team_leader_id UUID REFERENCES public.gamers(id) ON DELETE SET NULL,
+    bonus_adjustment NUMERIC DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 -- 2. Create ORDERS Table
-CREATE TABLE public.orders (
+CREATE TABLE IF NOT EXISTS public.orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_number TEXT UNIQUE NOT NULL,
     gamer_id UUID REFERENCES public.gamers(id) ON DELETE RESTRICT NOT NULL,
@@ -582,7 +602,7 @@ CREATE TABLE public.orders (
 );
 
 -- 3. Create ATTENDANCE Table
-CREATE TABLE public.attendance (
+CREATE TABLE IF NOT EXISTS public.attendance (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     gamer_id UUID REFERENCES public.gamers(id) ON DELETE CASCADE NOT NULL,
     date DATE NOT NULL,
