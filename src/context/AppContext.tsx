@@ -844,7 +844,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (!isDemo && supabase) {
       try {
-        const { error } = await supabase.from('orders').insert([newOrder]);
+        let { error } = await supabase.from('orders').insert([newOrder]);
+        if (error && (error.message?.includes('progress_millions') || error.message?.includes('schema cache'))) {
+          // Graceful fallback retry if progress_millions column has not been added to Supabase table yet
+          const fallbackOrder: any = { ...newOrder };
+          delete fallbackOrder.progress_millions;
+          const retryRes = await supabase.from('orders').insert([fallbackOrder]);
+          error = retryRes.error;
+        }
         if (error) throw error;
         setOrders((prev) => [newOrder, ...prev]);
         return { success: true };
@@ -892,7 +899,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (!isDemo && supabase) {
       try {
-        const updates = {
+        const updates: any = {
           order_number: orderNumber,
           gamer_id: gamerId,
           size_millions: sizeMillions,
@@ -904,11 +911,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
           completed_date: completedDate || null
         };
 
-        const { error } = await supabase.from('orders').update(updates).eq('id', id);
+        let { error } = await supabase.from('orders').update(updates).eq('id', id);
+        if (error && (error.message?.includes('progress_millions') || error.message?.includes('schema cache'))) {
+          // Graceful fallback retry if progress_millions column has not been added to Supabase table yet
+          delete updates.progress_millions;
+          const retryRes = await supabase.from('orders').update(updates).eq('id', id);
+          error = retryRes.error;
+        }
         if (error) throw error;
 
         setOrders((prev) =>
-          prev.map((o) => (o.id === id ? { ...o, ...updates, completed_date: completedDate || undefined } : o))
+          prev.map((o) => (o.id === id ? { ...o, ...updates, progress_millions: finalProgress, completed_date: completedDate || undefined } : o))
         );
         return { success: true };
       } catch (err: any) {

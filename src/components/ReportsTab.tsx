@@ -555,6 +555,7 @@ CREATE TABLE public.orders (
     order_number TEXT UNIQUE NOT NULL,
     gamer_id UUID REFERENCES public.gamers(id) ON DELETE RESTRICT NOT NULL,
     size_millions NUMERIC NOT NULL,
+    progress_millions NUMERIC DEFAULT 0,
     asset_type TEXT NOT NULL DEFAULT 'Haval Coins',
     start_date TIMESTAMP WITH TIME ZONE NOT NULL,
     status TEXT NOT NULL DEFAULT 'Running',
