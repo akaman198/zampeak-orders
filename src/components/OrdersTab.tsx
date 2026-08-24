@@ -48,6 +48,7 @@ export default function OrdersTab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [gamerFilter, setGamerFilter] = useState<string>('All');
+  const [missionTypeFilter, setMissionTypeFilter] = useState<'All' | 'solo' | 'dual'>('All');
   const [sortBy, setSortBy] = useState<'date' | 'order_number' | 'size' | 'payout'>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
@@ -230,18 +231,26 @@ export default function OrdersTab() {
   const filteredOrders = orders
     .filter(order => {
       const assignedGamer = gamers.find(g => g.id === order.gamer_id);
+      const coGamer = order.co_gamer_id ? gamers.find(g => g.id === order.co_gamer_id) : null;
       const gamerName = assignedGamer ? assignedGamer.name : '';
+      const coGamerName = coGamer ? coGamer.name : '';
       const employeeId = assignedGamer ? assignedGamer.employee_id : '';
+      const coEmployeeId = coGamer ? coGamer.employee_id : '';
       
       const matchesSearch = 
         order.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
         gamerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        employeeId.toLowerCase().includes(searchTerm.toLowerCase());
+        coGamerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        employeeId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        coEmployeeId.toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchesStatus = statusFilter === 'All' || order.status === statusFilter;
-      const matchesGamer = gamerFilter === 'All' || order.gamer_id === gamerFilter;
+      const matchesGamer = gamerFilter === 'All' || order.gamer_id === gamerFilter || order.co_gamer_id === gamerFilter;
+      const matchesMissionType = missionTypeFilter === 'All' || 
+        (missionTypeFilter === 'dual' && !!order.co_gamer_id) || 
+        (missionTypeFilter === 'solo' && !order.co_gamer_id);
 
-      return matchesSearch && matchesStatus && matchesGamer;
+      return matchesSearch && matchesStatus && matchesGamer && matchesMissionType;
     })
     .sort((a, b) => {
       let comparison = 0;
@@ -290,6 +299,17 @@ export default function OrdersTab() {
             <option value="Completed">Completed</option>
             <option value="Cancelled">Cancelled</option>
             <option value="Violation">Violation</option>
+          </select>
+
+          {/* Mission Type Filter (Solo vs Dual) */}
+          <select 
+            value={missionTypeFilter} 
+            onChange={(e) => setMissionTypeFilter(e.target.value as 'All' | 'solo' | 'dual')}
+            className="bg-cyber-dark border border-cyber-border rounded px-3 py-2 text-slate-300 focus:outline-none focus:border-cyber-cyan cursor-pointer"
+          >
+            <option value="All">All Mission Types</option>
+            <option value="dual">⚡ Dual 50/50 Missions</option>
+            <option value="solo">Solo Missions</option>
           </select>
 
           {/* Gamer Filter (Shown to Admin, Viewer & Technical Manager) */}

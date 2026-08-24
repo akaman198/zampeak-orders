@@ -188,20 +188,24 @@ export default function GamersTab() {
   };
 
   const getGamerProfileMetrics = (gamerId: string) => {
-    const gamerOrders = orders.filter(o => o.gamer_id === gamerId);
+    // Match orders where gamer is primary runner or co-runner
+    const gamerOrders = orders.filter(o => o.gamer_id === gamerId || o.co_gamer_id === gamerId);
     const completed = gamerOrders.filter(o => o.status === 'Completed');
     const running = gamerOrders.filter(o => o.status === 'Running').length;
     const paused = gamerOrders.filter(o => o.status === 'Paused').length;
     const violation = gamerOrders.filter(o => o.status === 'Violation').length;
     const cancelled = gamerOrders.filter(o => o.status === 'Cancelled').length;
     
-    const assets = completed.reduce((sum, o) => sum + o.size_millions, 0);
-    const expectedPay = completed.reduce((sum, o) => sum + o.payout, 0);
+    const assets = completed.reduce((sum, o) => sum + (o.co_gamer_id ? Number(o.size_millions || 0) / 2 : Number(o.size_millions || 0)), 0);
+    const expectedPay = completed.reduce((sum, o) => sum + (o.co_gamer_id ? Number(o.payout || 0) / 2 : Number(o.payout || 0)), 0);
     
-    // Calculate Net Expected Pay for the current cycle
+    // Calculate Net Expected Pay and 26-Order Target for the current cycle
     const currentCycle = getPayPeriodLabel(new Date().toISOString());
     const payroll = calculatePayroll(gamerId, currentCycle);
     const netExpectedPay = payroll.totalPay;
+    const completedOrdersCount = payroll.completedOrdersCount || 0;
+    const responsibilitySalary = payroll.responsibilitySalary || 0;
+    const isNewStructure = payroll.isNewStructure;
     
     const total = gamerOrders.length;
     const completionRate = total > 0 ? Math.round((completed.length / total) * 100) : 0;
@@ -218,6 +222,10 @@ export default function GamersTab() {
       assetsFarmed: assets,
       expectedPay,
       netExpectedPay,
+      completedOrdersCount,
+      responsibilitySalary,
+      isNewStructure,
+      currentCycle,
       completionRate,
       violationRate
     };
@@ -357,12 +365,12 @@ export default function GamersTab() {
                       <div className="font-bold text-slate-300">{metrics.totalCount}</div>
                     </div>
                     <div>
-                      <div className="text-slate-500 text-[8px] uppercase">Completed</div>
-                      <div className="font-bold text-cyber-green">{metrics.completedCount}</div>
+                      <div className="text-slate-500 text-[8px] uppercase text-cyber-cyan">Orders (26 Target)</div>
+                      <div className="font-bold text-cyber-cyan">{metrics.completedOrdersCount}/26</div>
                     </div>
                     <div>
-                      <div className="text-slate-500 text-[8px] uppercase">Earnings</div>
-                      <div className="font-bold text-cyber-cyan">K{metrics.expectedPay}</div>
+                      <div className="text-slate-500 text-[8px] uppercase">Net Pay</div>
+                      <div className="font-bold text-cyber-green">K{metrics.netExpectedPay.toLocaleString()}</div>
                     </div>
                   </div>
                 </div>
@@ -399,44 +407,56 @@ export default function GamersTab() {
                     type="text" 
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. John MacTavish"
+                    placeholder="e.g. Alex Banda"
                     className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-slate-400 uppercase tracking-wider">Employee ID</label>
+                  <label className="text-slate-400 uppercase tracking-wider">Employee ID (Login UID)</label>
                   <input 
                     type="text" 
                     value={employeeId}
                     onChange={(e) => setEmployeeId(e.target.value)}
-                    placeholder="e.g. ZP-101"
+                    placeholder="e.g. GM-008"
                     className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
-                  <label className="text-slate-400 uppercase tracking-wider">Default Registration Password</label>
+                  <label className="text-slate-400 uppercase tracking-wider">Default Password (One-Time Access)</label>
                   <input 
                     type="text" 
                     value={defaultPassword}
                     onChange={(e) => setDefaultPassword(e.target.value)}
-                    placeholder="Set temporary code (e.g. gamer123)"
+                    placeholder="e.g. gamer123"
                     className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-slate-400 uppercase tracking-wider">Phone Details (Optional)</label>
+                  <label className="text-slate-400 uppercase tracking-wider">Phone / Contact</label>
                   <input 
                     type="text" 
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="e.g. +260971234567"
+                    placeholder="e.g. 0970000000"
                     className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan"
                   />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-slate-400 uppercase tracking-wider">Operational Status</label>
+                  <select 
+                    value={status} 
+                    onChange={(e) => setStatus(e.target.value as 'active' | 'inactive')}
+                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer text-xs"
+                  >
+                    <option value="active">Active (On Duty)</option>
+                    <option value="inactive">Inactive (Suspended)</option>
+                  </select>
                 </div>
               </div>
 
@@ -773,7 +793,18 @@ export default function GamersTab() {
                 const metrics = getGamerProfileMetrics(selectedGamer.id);
                 return (
                   <div className="space-y-6">
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 font-mono text-center md:text-left">
+                    <div className="grid grid-cols-2 md:grid-cols-6 gap-3 font-mono text-center md:text-left">
+                      <div className="p-3 bg-slate-950/60 rounded border border-cyber-cyan/40 col-span-1 shadow-neon-cyan/5">
+                        <div className="text-[9px] text-cyber-cyan uppercase tracking-widest font-bold">Orders (26 Target)</div>
+                        <div className="text-xl font-black text-cyber-cyan mt-1">{metrics.completedOrdersCount} / 26</div>
+                        <div className="text-[8px] text-slate-400 mt-0.5">
+                          {metrics.completedOrdersCount >= 26 ? (
+                            <span className="text-cyber-green font-bold">✓ Target Met (+{metrics.completedOrdersCount - 26} Excess)</span>
+                          ) : (
+                            <span>{26 - metrics.completedOrdersCount} needed for full K800</span>
+                          )}
+                        </div>
+                      </div>
                       <div className="p-3 bg-slate-950/60 rounded border border-cyber-border/30 col-span-1">
                         <div className="text-[9px] text-slate-500 uppercase tracking-widest">Total Deployed</div>
                         <div className="text-xl font-bold text-slate-200 mt-1">{metrics.totalCount} Missions</div>
@@ -819,8 +850,9 @@ export default function GamersTab() {
 
                     {/* Mission History */}
                     <div>
-                      <h4 className="font-mono font-bold text-xs uppercase tracking-wider text-slate-400 mb-3 border-b border-cyber-border/20 pb-2">
-                        Assigned Mission Log
+                      <h4 className="font-mono font-bold text-xs uppercase tracking-wider text-slate-400 mb-3 border-b border-cyber-border/20 pb-2 flex justify-between items-center">
+                        <span>Assigned Mission Log</span>
+                        <span className="text-[10px] text-cyber-cyan lowercase select-none">Includes solo &amp; 50/50 dual missions</span>
                       </h4>
 
                       {metrics.orders.length === 0 ? (
@@ -833,34 +865,63 @@ export default function GamersTab() {
                             <thead>
                               <tr className="border-b border-cyber-border/40 text-slate-500 uppercase">
                                 <th className="py-2">Code</th>
-                                <th className="py-2 text-right">Size</th>
-                                <th className="py-2 text-right">Pay</th>
+                                <th className="py-2">Mission Type</th>
+                                <th className="py-2 text-right">Size / Quota</th>
+                                <th className="py-2 text-right">Pay Share</th>
                                 <th className="py-2">Deployed On</th>
                                 <th className="py-2">Status</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-cyber-border/20 text-slate-300">
-                              {metrics.orders.map(order => (
-                                <tr key={order.id} className="hover:bg-slate-900/40">
-                                  <td className="py-2.5 font-bold text-cyber-cyan">{order.order_number}</td>
-                                  <td className="py-2.5 text-right font-bold">{formatM(order.size_millions)}M ({order.asset_type === 'Haval Coins' ? 'Haval' : 'Assets'})</td>
-                                  <td className="py-2.5 text-right text-cyber-green font-bold">K{order.payout}</td>
-                                  <td className="py-2.5 text-slate-400">
-                                    {new Date(order.start_date).toLocaleDateString()}
-                                  </td>
-                                  <td className="py-2.5">
-                                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${
-                                      order.status === 'Running' ? 'bg-cyber-cyan/10 text-cyber-cyan' :
-                                      order.status === 'Completed' ? 'bg-cyber-green/10 text-cyber-green' :
-                                      order.status === 'Paused' ? 'bg-cyber-amber/10 text-cyber-amber' :
-                                      order.status === 'Violation' ? 'bg-cyber-red/10 text-cyber-red' :
-                                      'bg-slate-700/10 text-slate-400'
-                                    }`}>
-                                      {order.status}
-                                    </span>
-                                  </td>
-                                </tr>
-                              ))}
+                              {metrics.orders.map(order => {
+                                const isDual = !!order.co_gamer_id;
+                                const isPrimary = order.gamer_id === selectedGamer.id;
+                                const partnerId = isPrimary ? order.co_gamer_id : order.gamer_id;
+                                const partnerGamer = partnerId ? gamers.find(g => g.id === partnerId) : null;
+                                const effectiveSize = isDual ? Number(order.size_millions || 0) / 2 : Number(order.size_millions || 0);
+                                const effectivePayout = isDual ? Number(order.payout || 0) / 2 : Number(order.payout || 0);
+
+                                return (
+                                  <tr key={order.id} className="hover:bg-slate-900/40">
+                                    <td className="py-2.5 font-bold text-cyber-cyan">{order.order_number}</td>
+                                    <td className="py-2.5">
+                                      {isDual ? (
+                                        <div>
+                                          <span className="inline-flex items-center gap-1 bg-cyber-cyan/15 text-cyber-cyan border border-cyber-cyan/30 px-1.5 py-0.5 rounded text-[8px] font-bold">
+                                            50/50 DUAL
+                                          </span>
+                                          <span className="text-[9px] text-slate-400 block mt-0.5">
+                                            Partner: {partnerGamer ? partnerGamer.name : 'Co-Runner'}
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <span className="text-[9px] text-slate-500 uppercase">Solo Mission</span>
+                                      )}
+                                    </td>
+                                    <td className="py-2.5 text-right font-bold">
+                                      {formatM(effectiveSize)}M {isDual && <span className="text-[9px] text-slate-500 font-normal">({formatM(order.size_millions)}M total)</span>}
+                                      <span className="text-[9px] text-slate-500 font-normal block">{order.asset_type === 'Haval Coins' ? 'Haval' : 'Assets'}</span>
+                                    </td>
+                                    <td className="py-2.5 text-right text-cyber-green font-bold">
+                                      K{effectivePayout} {isDual && <span className="text-[9px] text-slate-500 font-normal">(50% of K{order.payout})</span>}
+                                    </td>
+                                    <td className="py-2.5 text-slate-400">
+                                      {new Date(order.start_date).toLocaleDateString()}
+                                    </td>
+                                    <td className="py-2.5">
+                                      <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${
+                                        order.status === 'Running' ? 'bg-cyber-cyan/10 text-cyber-cyan' :
+                                        order.status === 'Completed' ? 'bg-cyber-green/10 text-cyber-green' :
+                                        order.status === 'Paused' ? 'bg-cyber-amber/10 text-cyber-amber' :
+                                        order.status === 'Violation' ? 'bg-cyber-red/10 text-cyber-red' :
+                                        'bg-slate-700/10 text-slate-400'
+                                      }`}>
+                                        {order.status}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>

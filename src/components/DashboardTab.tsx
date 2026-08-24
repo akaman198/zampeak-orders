@@ -513,7 +513,10 @@ export default function DashboardTab({
                             <span className="font-bold text-slate-300">{g.name}</span>
                             <span className="text-[9px] text-slate-500 ml-1.5 capitalize">({g.gamer_role?.replace('_', ' ')} - {g.level})</span>
                           </div>
-                          <div className="flex gap-4">
+                          <div className="flex items-center gap-3">
+                            <span className="text-cyber-cyan font-bold bg-cyber-cyan/10 px-1.5 py-0.5 rounded border border-cyber-cyan/20">
+                              {payroll.completedOrdersCount || 0}/26 target
+                            </span>
                             <span className="text-slate-400">{payroll.daysWorked}/26 days</span>
                             <span className="font-bold text-cyber-green">K{payroll.totalPay.toLocaleString()}</span>
                           </div>
@@ -1097,21 +1100,51 @@ export default function DashboardTab({
               <tbody className="divide-y divide-cyber-border/40">
                 {recentOrders.map((order) => {
                   const assignedGamer = gamers.find(g => g.id === order.gamer_id);
+                  const coGamer = order.co_gamer_id ? gamers.find(g => g.id === order.co_gamer_id) : null;
                   
                   return (
                     <tr key={order.id} className="hover:bg-slate-900/40 transition-colors">
-                      <td className="p-3 text-cyber-cyan font-bold">{order.order_number}</td>
+                      <td className="p-3">
+                        <div className="text-cyber-cyan font-bold">{order.order_number}</div>
+                        {coGamer && (
+                          <span className="inline-block mt-0.5 text-[8px] font-bold bg-cyber-cyan/15 text-cyber-cyan px-1 py-0.2 rounded border border-cyber-cyan/30 uppercase">
+                            50/50 Dual
+                          </span>
+                        )}
+                      </td>
                       {isManager && (
                         <td className="p-3">
-                          <div className="font-bold text-slate-300">{assignedGamer ? assignedGamer.name : 'Unknown Gamer'}</div>
-                          <div className="text-[10px] text-slate-500">{assignedGamer ? `ID: ${assignedGamer.employee_id}` : ''}</div>
+                          {coGamer ? (
+                            <div>
+                              <div className="font-bold text-slate-200 text-xs">
+                                {assignedGamer?.name || 'Unknown'} &amp; {coGamer.name}
+                              </div>
+                              <div className="text-[10px] text-cyber-cyan/80">
+                                IDs: {assignedGamer?.employee_id || 'N/A'} / {coGamer.employee_id}
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <div className="font-bold text-slate-300">{assignedGamer ? assignedGamer.name : 'Unknown Gamer'}</div>
+                              <div className="text-[10px] text-slate-500">{assignedGamer ? `ID: ${assignedGamer.employee_id}` : ''}</div>
+                            </div>
+                          )}
                         </td>
                       )}
                       <td className="p-3 text-right text-slate-300 font-bold">
-                        {formatM(order.size_millions)}M
+                        {coGamer ? (
+                          <>
+                            <span>{formatM(order.size_millions / 2)}M each</span>
+                            <span className="text-[9px] text-slate-500 font-normal block">({formatM(order.size_millions)}M total)</span>
+                          </>
+                        ) : (
+                          <span>{formatM(order.size_millions)}M</span>
+                        )}
                         <span className="text-[9px] text-slate-500 font-normal block">{order.asset_type || 'Haval Coins'}</span>
                       </td>
-                      <td className="p-3 text-right text-cyber-green font-bold">K{order.payout}</td>
+                      <td className="p-3 text-right text-cyber-green font-bold">
+                        {coGamer ? `K${Number(order.payout) / 2} each` : `K${order.payout}`}
+                      </td>
                       <td className="p-3 text-slate-400">
                         {new Date(order.start_date).toLocaleDateString()} {new Date(order.start_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </td>
