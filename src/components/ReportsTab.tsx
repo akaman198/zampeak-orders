@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { useApp, getPayPeriodLabel, getOrderPeriodLabel } from '../context/AppContext';
+import { useApp, getPayPeriodLabel, getOrderPeriodLabel, isNewSalaryStructureCycle } from '../context/AppContext';
 import { 
   FileSpreadsheet, 
   Printer, 
@@ -111,11 +111,22 @@ export default function ReportsTab() {
   const activeOperators = gamers.filter(g => g.status === 'active');
   const payrollSummaries = activeOperators.map(g => calculatePayroll(g.id, selectedCycle));
 
+  const isNewStructure = isNewSalaryStructureCycle(selectedCycle);
+
   // Calculate Report Aggregates
   const totalBaseSalary = payrollSummaries.reduce((sum, p) => sum + p.baseSalary, 0);
   const totalBasePayEarned = payrollSummaries.reduce((sum, p) => sum + p.basePayEarned, 0);
   const totalDeductions = payrollSummaries.reduce((sum, p) => sum + p.deductions, 0);
   const totalAttendanceBonus = payrollSummaries.reduce((sum, p) => sum + p.attendanceBonus, 0);
+
+  // New Structure Aggregates
+  const totalResponsibilitySalary = payrollSummaries.reduce((sum, p) => sum + (p.responsibilitySalary || 0), 0);
+  const totalAttendanceSalary = payrollSummaries.reduce((sum, p) => sum + (p.attendanceSalary || 0), 0);
+  const totalTransportAllowance = payrollSummaries.reduce((sum, p) => sum + (p.transportAllowance || 0), 0);
+  const totalExcessOrderIncentive = payrollSummaries.reduce((sum, p) => sum + (p.excessOrderIncentive || 0), 0);
+  const totalTLManagementAllowance = payrollSummaries.reduce((sum, p) => sum + (p.teamLeaderManagementAllowance || 0), 0);
+  const totalTeamIncentive = payrollSummaries.reduce((sum, p) => sum + (p.teamIncentive || 0), 0);
+  const totalAdditionalPerformanceAward = payrollSummaries.reduce((sum, p) => sum + (p.additionalPerformanceAward || 0), 0);
   
   // Completed order stats for cycle
   const cycleOrders = orders.filter(
@@ -295,6 +306,51 @@ export default function ReportsTab() {
 
   // 2. Export functions
   const exportToCSV = () => {
+    if (isNewStructure) {
+      const headers = [
+        'Operator Name',
+        'Employee ID',
+        'Role',
+        'Days Worked',
+        'Valid Completed Orders',
+        'Responsibility Salary (K800 Base)',
+        'Attendance Salary (K200 Base)',
+        'Transport Allowance (K10/day)',
+        'Excess Order Incentive',
+        'Team Leader Allowance',
+        'Team Incentive',
+        'Additional Performance Award',
+        'Total Net Pay (Kwacha K)'
+      ];
+      const rows = payrollSummaries.map(p => [
+        `"${p.gamerName}"`,
+        `"${p.employeeId}"`,
+        `"${p.gamerRole.replace('_', ' ').toUpperCase()}"`,
+        `"${p.daysWorked}/26"`,
+        p.completedOrdersCount || 0,
+        (p.responsibilitySalary || 0).toFixed(2),
+        (p.attendanceSalary || 0).toFixed(2),
+        (p.transportAllowance || 0).toFixed(2),
+        (p.excessOrderIncentive || 0).toFixed(2),
+        (p.teamLeaderManagementAllowance || 0).toFixed(2),
+        (p.teamIncentive || 0).toFixed(2),
+        (p.additionalPerformanceAward || 0).toFixed(2),
+        p.totalPay.toFixed(2)
+      ]);
+
+      const csvContent = "data:text/csv;charset=utf-8," 
+        + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `zampeak_payroll_${selectedCycle.replace(' ', '_').replace(',', '')}_${new Date().toISOString().slice(0,10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+
     const headers = [
       'Gamer Name', 
       'Employee ID', 
@@ -640,50 +696,111 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
               <div className="overflow-x-auto">
                 <table className="w-full text-left font-mono text-xs border-collapse">
                   <thead>
-                    <tr className="border-b-2 border-cyber-border text-slate-400 print:text-slate-700 font-bold uppercase text-[9px]">
-                      <th className="py-2.5 px-2">Operator Name</th>
-                      <th className="py-2.5 px-2">Clearance ID</th>
-                      <th className="py-2.5 px-2">Role/Level</th>
-                      <th className="py-2.5 px-2 text-center">Days Worked</th>
-                      <th className="py-2.5 px-2 text-right">Base Salary</th>
-                      <th className="py-2.5 px-2 text-right">Base Earned</th>
-                      <th className="py-2.5 px-2 text-right text-cyber-red print:text-red-700 font-bold">Deductions</th>
-                      <th className="py-2.5 px-2 text-right text-cyber-green print:text-green-700 font-bold">On-Time Bonus</th>
-                      <th className="py-2.5 px-2 text-right text-cyber-green print:text-green-700 font-bold">Orders Bonus</th>
-                      <th className="py-2.5 px-2 text-right text-cyber-green print:text-green-700 font-bold">Team Leader Bonus</th>
-                      <th className="py-2.5 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black">Net Pay</th>
-                    </tr>
+                    {isNewStructure ? (
+                      <tr className="border-b-2 border-cyber-border text-slate-400 print:text-slate-700 font-bold uppercase text-[9px]">
+                        <th className="py-2.5 px-2">Operator Name</th>
+                        <th className="py-2.5 px-2">Clearance ID</th>
+                        <th className="py-2.5 px-2">Role</th>
+                        <th className="py-2.5 px-2 text-center">Days Worked</th>
+                        <th className="py-2.5 px-2 text-center text-cyber-cyan">Orders (26 Target)</th>
+                        <th className="py-2.5 px-2 text-right">Responsibility (K800)</th>
+                        <th className="py-2.5 px-2 text-right">Attendance (K200)</th>
+                        <th className="py-2.5 px-2 text-right">Transport (K10/d)</th>
+                        <th className="py-2.5 px-2 text-right text-cyber-green print:text-green-700 font-bold">Excess Orders</th>
+                        <th className="py-2.5 px-2 text-right text-cyber-amber print:text-amber-700 font-bold">TL Allowance</th>
+                        <th className="py-2.5 px-2 text-right text-cyber-green print:text-green-700 font-bold">Team Incentive</th>
+                        <th className="py-2.5 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black">Net Pay</th>
+                      </tr>
+                    ) : (
+                      <tr className="border-b-2 border-cyber-border text-slate-400 print:text-slate-700 font-bold uppercase text-[9px]">
+                        <th className="py-2.5 px-2">Operator Name</th>
+                        <th className="py-2.5 px-2">Clearance ID</th>
+                        <th className="py-2.5 px-2">Role/Level</th>
+                        <th className="py-2.5 px-2 text-center">Days Worked</th>
+                        <th className="py-2.5 px-2 text-right">Base Salary</th>
+                        <th className="py-2.5 px-2 text-right">Base Earned</th>
+                        <th className="py-2.5 px-2 text-right text-cyber-red print:text-red-700 font-bold">Deductions</th>
+                        <th className="py-2.5 px-2 text-right text-cyber-green print:text-green-700 font-bold">On-Time Bonus</th>
+                        <th className="py-2.5 px-2 text-right text-cyber-green print:text-green-700 font-bold">Orders Bonus</th>
+                        <th className="py-2.5 px-2 text-right text-cyber-green print:text-green-700 font-bold">Team Leader Bonus</th>
+                        <th className="py-2.5 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black">Net Pay</th>
+                      </tr>
+                    )}
                   </thead>
                   <tbody className="divide-y divide-cyber-border/30 text-slate-300 print:text-black">
-                    {payrollSummaries.map((p) => (
-                      <tr key={p.gamerId} className="hover:bg-slate-900/20">
-                        <td className="py-3 px-2 font-bold">{p.gamerName}</td>
-                        <td className="py-3 px-2 text-slate-400 print:text-slate-600 font-mono">{p.employeeId}</td>
-                        <td className="py-3 px-2 capitalize">{p.gamerRole.replace('_', ' ')} / {p.gamerRole === 'technical_manager' ? 'contract' : p.level}</td>
-                        <td className="py-3 px-2 text-center font-bold">{p.daysWorked} / 26</td>
-                        <td className="py-3 px-2 text-right">K{p.baseSalary}</td>
-                        <td className="py-3 px-2 text-right">K{p.basePayEarned.toFixed(2)}</td>
-                        <td className="py-3 px-2 text-right text-cyber-red print:text-red-700 font-bold">K-{p.deductions.toFixed(2)}</td>
-                        <td className="py-3 px-2 text-right text-cyber-green print:text-green-700">K{p.attendanceBonus}</td>
-                        <td className="py-3 px-2 text-right text-cyber-green print:text-green-700">K{p.orderBonus}</td>
-                        <td className="py-3 px-2 text-right text-cyber-green print:text-green-700">K{p.teamVolumeBonus}</td>
-                        <td className="py-3 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black">K{p.totalPay.toLocaleString()}</td>
-                      </tr>
-                    ))}
+                    {payrollSummaries.map((p) => {
+                      if (isNewStructure) {
+                        return (
+                          <tr key={p.gamerId} className="hover:bg-slate-900/20">
+                            <td className="py-3 px-2 font-bold">{p.gamerName}</td>
+                            <td className="py-3 px-2 text-slate-400 print:text-slate-600 font-mono">{p.employeeId}</td>
+                            <td className="py-3 px-2 capitalize">{p.gamerRole.replace('_', ' ')}</td>
+                            <td className="py-3 px-2 text-center font-bold">{p.daysWorked} / 26</td>
+                            <td className="py-3 px-2 text-center font-bold text-cyber-cyan">{p.completedOrdersCount || 0}</td>
+                            <td className="py-3 px-2 text-right">K{(p.responsibilitySalary || 0).toFixed(2)}</td>
+                            <td className="py-3 px-2 text-right">K{(p.attendanceSalary || 0).toFixed(2)}</td>
+                            <td className="py-3 px-2 text-right">K{(p.transportAllowance || 0).toFixed(2)}</td>
+                            <td className="py-3 px-2 text-right text-cyber-green print:text-green-700 font-bold">
+                              K{(p.excessOrderIncentive || 0).toFixed(2)}
+                              {(p.excessOrdersCount || 0) > 0 && (
+                                <span className="text-[9px] text-slate-500 block font-normal">+{p.excessOrdersCount} excess</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-2 text-right text-cyber-amber print:text-amber-700">K{(p.teamLeaderManagementAllowance || 0).toFixed(2)}</td>
+                            <td className="py-3 px-2 text-right text-cyber-green print:text-green-700">K{(p.teamIncentive || 0).toFixed(2)}</td>
+                            <td className="py-3 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black">K{p.totalPay.toLocaleString()}</td>
+                          </tr>
+                        );
+                      }
+
+                      return (
+                        <tr key={p.gamerId} className="hover:bg-slate-900/20">
+                          <td className="py-3 px-2 font-bold">{p.gamerName}</td>
+                          <td className="py-3 px-2 text-slate-400 print:text-slate-600 font-mono">{p.employeeId}</td>
+                          <td className="py-3 px-2 capitalize">{p.gamerRole.replace('_', ' ')} / {p.gamerRole === 'technical_manager' ? 'contract' : p.level}</td>
+                          <td className="py-3 px-2 text-center font-bold">{p.daysWorked} / 26</td>
+                          <td className="py-3 px-2 text-right">K{p.baseSalary}</td>
+                          <td className="py-3 px-2 text-right">K{p.basePayEarned.toFixed(2)}</td>
+                          <td className="py-3 px-2 text-right text-cyber-red print:text-red-700 font-bold">K-{p.deductions.toFixed(2)}</td>
+                          <td className="py-3 px-2 text-right text-cyber-green print:text-green-700">K{p.attendanceBonus}</td>
+                          <td className="py-3 px-2 text-right text-cyber-green print:text-green-700">K{p.orderBonus}</td>
+                          <td className="py-3 px-2 text-right text-cyber-green print:text-green-700">K{p.teamVolumeBonus}</td>
+                          <td className="py-3 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black">K{p.totalPay.toLocaleString()}</td>
+                        </tr>
+                      );
+                    })}
+                    
                     {/* Aggregates Summary Row */}
-                    <tr className="border-t-2 border-cyber-cyan bg-cyber-dark/40 font-bold text-slate-200 print:text-black text-[10px]">
-                      <td className="py-3 px-2 uppercase font-black" colSpan={3}>SYSTEM TOTALS</td>
-                      <td className="py-3 px-2 text-center font-black">-</td>
-                      <td className="py-3 px-2 text-right font-black">K{totalBaseSalary.toLocaleString()}</td>
-                      <td className="py-3 px-2 text-right font-black">K{totalBasePayEarned.toLocaleString()}</td>
-                      <td className="py-3 px-2 text-right text-cyber-red print:text-red-700 font-black">K-{totalDeductions.toLocaleString()}</td>
-                      <td className="py-3 px-2 text-right text-cyber-green print:text-green-700 font-black">K{totalAttendanceBonus}</td>
-                      <td className="py-3 px-2 text-right text-cyber-green print:text-green-700 font-black">K{totalOrderPayout.toLocaleString()}</td>
-                      <td className="py-3 px-2 text-right text-cyber-green print:text-green-700 font-black">K{totalTeamVolumeBonus}</td>
-                      <td className="py-3 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black text-xs">
-                        K{totalPayAll.toLocaleString()}
-                      </td>
-                    </tr>
+                    {isNewStructure ? (
+                      <tr className="border-t-2 border-cyber-cyan bg-cyber-dark/40 font-bold text-slate-200 print:text-black text-[10px]">
+                        <td className="py-3 px-2 uppercase font-black" colSpan={3}>SYSTEM TOTALS</td>
+                        <td className="py-3 px-2 text-center font-black">-</td>
+                        <td className="py-3 px-2 text-center font-black text-cyber-cyan">{totalCompletedMissions}</td>
+                        <td className="py-3 px-2 text-right font-black">K{totalResponsibilitySalary.toLocaleString()}</td>
+                        <td className="py-3 px-2 text-right font-black">K{totalAttendanceSalary.toLocaleString()}</td>
+                        <td className="py-3 px-2 text-right font-black">K{totalTransportAllowance.toLocaleString()}</td>
+                        <td className="py-3 px-2 text-right text-cyber-green print:text-green-700 font-black">K{totalExcessOrderIncentive.toLocaleString()}</td>
+                        <td className="py-3 px-2 text-right text-cyber-amber print:text-amber-700 font-black">K{totalTLManagementAllowance.toLocaleString()}</td>
+                        <td className="py-3 px-2 text-right text-cyber-green print:text-green-700 font-black">K{totalTeamIncentive.toLocaleString()}</td>
+                        <td className="py-3 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black text-xs">
+                          K{totalPayAll.toLocaleString()}
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr className="border-t-2 border-cyber-cyan bg-cyber-dark/40 font-bold text-slate-200 print:text-black text-[10px]">
+                        <td className="py-3 px-2 uppercase font-black" colSpan={3}>SYSTEM TOTALS</td>
+                        <td className="py-3 px-2 text-center font-black">-</td>
+                        <td className="py-3 px-2 text-right font-black">K{totalBaseSalary.toLocaleString()}</td>
+                        <td className="py-3 px-2 text-right font-black">K{totalBasePayEarned.toLocaleString()}</td>
+                        <td className="py-3 px-2 text-right text-cyber-red print:text-red-700 font-black">K-{totalDeductions.toLocaleString()}</td>
+                        <td className="py-3 px-2 text-right text-cyber-green print:text-green-700 font-black">K{totalAttendanceBonus}</td>
+                        <td className="py-3 px-2 text-right text-cyber-green print:text-green-700 font-black">K{totalOrderPayout.toLocaleString()}</td>
+                        <td className="py-3 px-2 text-right text-cyber-green print:text-green-700 font-black">K{totalTeamVolumeBonus}</td>
+                        <td className="py-3 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black text-xs">
+                          K{totalPayAll.toLocaleString()}
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>

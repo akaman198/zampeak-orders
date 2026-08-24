@@ -75,7 +75,7 @@ export interface PayrollSummary {
   employeeId: string;
   gamerRole: GamerRole;
   level: GamerLevel;
-  baseSalary: number; // K1200, K1800, K2500, K4500
+  baseSalary: number; // K1200, K1800, K2500, K4500 (Legacy) or K800 (New)
   dailyRate: number;
   daysWorked: number;
   daysAbsent: number;
@@ -87,6 +87,18 @@ export interface PayrollSummary {
   orderBonus: number;
   teamVolumeBonus: number;
   totalPay: number;
+  // New August 16, 2026+ Salary Structure Fields
+  isNewStructure?: boolean;
+  responsibilitySalary?: number;
+  attendanceSalary?: number;
+  transportAllowance?: number;
+  excessOrderIncentive?: number;
+  completedOrdersCount?: number;
+  excessOrdersCount?: number;
+  teamIncentive?: number;
+  teamLeaderManagementAllowance?: number;
+  additionalPerformanceAward?: number;
+  teamCompletionRate?: number;
 }
 
 export interface TeamSummary {

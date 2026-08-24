@@ -527,6 +527,57 @@ export default function DashboardTab({
               // Gamer View: Personal HR details panel
               (() => {
                 const payroll = calculatePayroll(gamerProfile!.id, selectedCycle);
+
+                if (payroll.isNewStructure) {
+                  return (
+                    <div className="space-y-2 font-mono text-[10px] text-slate-300">
+                      <div className="text-slate-400 uppercase tracking-wider pb-1.5 border-b border-cyber-border/20 flex justify-between">
+                        <span>Personal Production HR Portfolio (New Salary Structure)</span>
+                        <span className="text-cyber-cyan text-[9px]">Shift: 9AM - 6PM (8H + 1H Lunch)</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5 py-1">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Responsibility Target (26 orders):</span>
+                          <span className="font-bold text-cyber-cyan">K{(payroll.responsibilitySalary || 0).toFixed(2)} ({payroll.completedOrdersCount || 0}/26 valid orders)</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Attendance Salary (Max K200):</span>
+                          <span className="font-bold text-slate-200">K{(payroll.attendanceSalary || 0).toFixed(2)} ({payroll.daysWorked}/26 days)</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Transport Allowance (K10/day):</span>
+                          <span className="font-bold text-cyber-green">K{(payroll.transportAllowance || 0).toFixed(2)} ({payroll.daysWorked} days)</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Excess Order Incentive:</span>
+                          <span className="font-bold text-cyber-green">
+                            K{(payroll.excessOrderIncentive || 0).toFixed(2)} 
+                            {(payroll.excessOrdersCount || 0) > 0 ? ` (+${payroll.excessOrdersCount} excess)` : ' (0 excess)'}
+                          </span>
+                        </div>
+                        {gamerProfile!.gamer_role === 'team_leader' && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">TL Management Allowance (K200):</span>
+                            <span className="font-bold text-cyber-amber">K{(payroll.teamLeaderManagementAllowance || 0).toFixed(2)}</span>
+                          </div>
+                        )}
+                        {(payroll.teamIncentive || 0) > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Team Incentive:</span>
+                            <span className="font-bold text-cyber-green">K{payroll.teamIncentive}</span>
+                          </div>
+                        )}
+                        {(payroll.additionalPerformanceAward || 0) > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Additional Performance Award:</span>
+                            <span className="font-bold text-cyber-cyan">K{payroll.additionalPerformanceAward}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <div className="space-y-2 font-mono text-[10px] text-slate-300">
                     <div className="text-slate-400 uppercase tracking-wider pb-1.5 border-b border-cyber-border/20 flex justify-between">

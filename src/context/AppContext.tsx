@@ -203,6 +203,23 @@ export const getOrderPeriodLabel = (dateStr: string) => {
 
 export const getPayPeriodLabel = getAttendancePeriodLabel;
 
+export const isNewSalaryStructureCycle = (cycleLabel: string): boolean => {
+  if (!cycleLabel) return true;
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  const parts = cycleLabel.replace(',', '').split(' '); // e.g. ["September", "15", "2026"]
+  if (parts.length < 3) return false;
+  const monthIndex = monthNames.indexOf(parts[0]);
+  const day = parseInt(parts[1]) || 15;
+  const year = parseInt(parts[2]) || 2026;
+  const cycleEndDate = new Date(year, monthIndex, day);
+  // Cutoff is August 15, 2026. Cycles ending AFTER August 15, 2026 (starting from 16th August 2026) use the new salary structure.
+  const cutoffDate = new Date(2026, 7, 15);
+  return cycleEndDate.getTime() > cutoffDate.getTime();
+};
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<'admin' | 'viewer' | 'gamer'>('admin');
@@ -1031,20 +1048,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       orderBonus: 0,
       teamVolumeBonus: 0,
       totalPay: 0,
+      isNewStructure: false,
     };
 
     if (!gamer) return emptyPayroll;
 
-    // 1. Determine Base Salary
-    let baseSalary = 1200;
-    if (gamer.gamer_role === 'technical_manager') {
-      baseSalary = 4500;
-    } else {
-      if (gamer.level === 'intermediate') baseSalary = 1800;
-      else if (gamer.level === 'advanced') baseSalary = 2500;
-    }
-
-    const dailyRate = baseSalary / 26;
+    const isNew = isNewSalaryStructureCycle(cycleLabel);
 
     // 2. Filter Attendance in Cycle
     const cycleAttendance = attendance.filter(
@@ -1057,33 +1066,212 @@ export function AppProvider({ children }: { children: ReactNode }) {
     
     const daysAbsent = cycleAttendance.filter((a) => a.status === 'absent').length;
     const onTimeDays = cycleAttendance.filter((a) => a.status === 'present_on_time').length;
+    const cappedDaysWorked = Math.min(26, daysWorked);
 
-    // 3. Base Pay Earned & Deductions (capped at 26 working days)
-    const presentDaysForBase = Math.min(26, daysWorked);
-    const basePayEarned = presentDaysForBase * dailyRate;
-    
-    // Late deductions: Removed by request
-    const lateDeduction = 0;
-    
-    const missedDaysDeductions = Math.max(0, baseSalary - basePayEarned);
-    const deductions = missedDaysDeductions;
-
-    // 4. Attendance Bonus: K200 if 26 days on time
-    const attendanceBonus = onTimeDays >= 26 ? 200 : 0;
-
-    // 5. Order payout bonuses
+    // 3. Completed orders in cycle
     const completedOrders = orders.filter(
       (o) => o.gamer_id === gamerId && o.status === 'Completed' && getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel
     );
+    const completedOrdersCount = completedOrders.length;
+
+    // =========================================================================
+    // NEW SALARY STRUCTURE (Effective from 16th August 2026 / Cycle Sep 15, 2026+)
+    // =========================================================================
+    if (isNew) {
+      if (gamer.gamer_role === 'technical_manager') {
+        const baseSalary = 4500;
+        const dailyRate = baseSalary / 26;
+        const basePayEarned = cappedDaysWorked * dailyRate;
+        const deductions = Math.max(0, baseSalary - basePayEarned);
+        const totalPay = Number(basePayEarned.toFixed(2));
+        return {
+          gamerId,
+          gamerName: gamer.name,
+          employeeId: gamer.employee_id,
+          gamerRole: gamer.gamer_role,
+          level: gamer.level,
+          baseSalary,
+          dailyRate,
+          daysWorked,
+          daysAbsent,
+          onTimeDays,
+          basePayEarned,
+          deductions,
+          lateDeduction: 0,
+          attendanceBonus: 0,
+          orderBonus: 0,
+          teamVolumeBonus: 0,
+          totalPay,
+          isNewStructure: true,
+          responsibilitySalary: baseSalary,
+          attendanceSalary: 0,
+          transportAllowance: 0,
+          excessOrderIncentive: 0,
+          completedOrdersCount,
+          excessOrdersCount: 0,
+          teamIncentive: 0,
+          teamLeaderManagementAllowance: 0,
+          additionalPerformanceAward: 0,
+          teamCompletionRate: 1.0
+        };
+      }
+
+      // Runners & Team Leaders use the unified production salary system
+      const baseSalary = 800; // Responsibility Target Base (26 orders)
+      const dailyRate = 800 / 26;
+
+      // A. Responsibility Salary: K800 × MIN(validOrders / 26, 1.0)
+      const responsibilitySalary = Number((800 * Math.min(1.0, completedOrdersCount / 26)).toFixed(2));
+
+      // B. Attendance Salary: K200 × MIN(attendanceDays / 26, 1.0)
+      const attendanceSalary = Number((200 * Math.min(1.0, cappedDaysWorked / 26)).toFixed(2));
+
+      // C. Transport Allowance: K10 / actual attendance day
+      const transportAllowance = Number((10 * daysWorked).toFixed(2));
+
+      // D. Excess Order Incentive (Progressive Tiers from 27th order onwards)
+      let excessOrderIncentive = 0;
+      let remainingExcess = Math.max(0, completedOrdersCount - 26);
+      const excessOrdersCount = remainingExcess;
+
+      // Tier 1: Orders 27–39 (up to 13 orders @ K35)
+      const tier1 = Math.min(13, remainingExcess);
+      excessOrderIncentive += tier1 * 35;
+      remainingExcess -= tier1;
+
+      // Tier 2: Orders 40–52 (up to 13 orders @ K40)
+      const tier2 = Math.min(13, remainingExcess);
+      excessOrderIncentive += tier2 * 40;
+      remainingExcess -= tier2;
+
+      // Tier 3: Orders 53–65 (up to 13 orders @ K45)
+      const tier3 = Math.min(13, remainingExcess);
+      excessOrderIncentive += tier3 * 45;
+      remainingExcess -= tier3;
+
+      // Tier 4: Orders 66+ (remaining @ K45)
+      if (remainingExcess > 0) {
+        excessOrderIncentive += remainingExcess * 45;
+      }
+      excessOrderIncentive = Number(excessOrderIncentive.toFixed(2));
+
+      // E. Team Leader Management Allowance: K200/month (prorated by attendance/26)
+      let teamLeaderManagementAllowance = 0;
+      if (gamer.gamer_role === 'team_leader') {
+        teamLeaderManagementAllowance = Number((200 * Math.min(1.0, cappedDaysWorked / 26)).toFixed(2));
+      }
+
+      // F. Team Incentive: Activated only when every active team member reaches >= 26 orders
+      let teamIncentive = 0;
+      let teamCompletionRate = 0;
+      const targetLeaderId = gamer.gamer_role === 'team_leader' ? gamerId : gamer.team_leader_id;
+
+      if (targetLeaderId) {
+        const teamMembers = gamers.filter(g => g.team_leader_id === targetLeaderId && g.status === 'active');
+        const leaderGamer = gamers.find(g => g.id === targetLeaderId);
+        const allTeamGamers = leaderGamer ? [leaderGamer, ...teamMembers] : teamMembers;
+
+        if (allTeamGamers.length > 0) {
+          const teamMemberStats = allTeamGamers.map(m => {
+            const mOrders = orders.filter(
+              o => o.gamer_id === m.id && o.status === 'Completed' && getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel
+            );
+            return { gamer: m, count: mOrders.length };
+          });
+
+          // Condition: Every member must complete at least 26 orders
+          const allMembersMetTarget = teamMemberStats.every(item => item.count >= 26);
+          const totalTeamOrders = teamMemberStats.reduce((sum, item) => sum + item.count, 0);
+          const teamTargetOrders = 26 * teamMemberStats.length;
+          teamCompletionRate = teamTargetOrders > 0 ? Number((totalTeamOrders / teamTargetOrders).toFixed(4)) : 0;
+
+          if (allMembersMetTarget) {
+            const isLeader = gamer.gamer_role === 'team_leader';
+            if (teamCompletionRate >= 1.20) {
+              teamIncentive = isLeader ? 300 : 150;
+            } else if (teamCompletionRate >= 1.10) {
+              teamIncentive = isLeader ? 200 : 100;
+            } else if (teamCompletionRate >= 1.00) {
+              teamIncentive = isLeader ? 100 : 50;
+            }
+          }
+        }
+      }
+
+      // G. Additional Performance Award (Manual bonus adjustment)
+      const additionalPerformanceAward = gamer.bonus_adjustment || 0;
+
+      // Base Pay Earned: Responsibility + Attendance + Transport
+      const basePayEarned = Number((responsibilitySalary + attendanceSalary + transportAllowance).toFixed(2));
+      const deductions = Math.max(0, 800 - responsibilitySalary) + Math.max(0, 200 - attendanceSalary);
+
+      const totalPay = Number((
+        responsibilitySalary + 
+        attendanceSalary + 
+        transportAllowance + 
+        excessOrderIncentive + 
+        teamLeaderManagementAllowance + 
+        teamIncentive + 
+        additionalPerformanceAward
+      ).toFixed(2));
+
+      return {
+        gamerId,
+        gamerName: gamer.name,
+        employeeId: gamer.employee_id,
+        gamerRole: gamer.gamer_role,
+        level: gamer.level,
+        baseSalary,
+        dailyRate,
+        daysWorked,
+        daysAbsent,
+        onTimeDays,
+        basePayEarned,
+        deductions,
+        lateDeduction: 0,
+        attendanceBonus: attendanceSalary,
+        orderBonus: excessOrderIncentive,
+        teamVolumeBonus: teamIncentive + teamLeaderManagementAllowance,
+        totalPay,
+        isNewStructure: true,
+        responsibilitySalary,
+        attendanceSalary,
+        transportAllowance,
+        excessOrderIncentive,
+        completedOrdersCount,
+        excessOrdersCount,
+        teamIncentive,
+        teamLeaderManagementAllowance,
+        additionalPerformanceAward,
+        teamCompletionRate
+      };
+    }
+
+    // =========================================================================
+    // LEGACY SALARY STRUCTURE (Before August 16, 2026 / August 15, 2026 & prior)
+    // =========================================================================
+    let baseSalary = 1200;
+    if (gamer.gamer_role === 'technical_manager') {
+      baseSalary = 4500;
+    } else {
+      if (gamer.level === 'intermediate') baseSalary = 1800;
+      else if (gamer.level === 'advanced') baseSalary = 2500;
+    }
+
+    const dailyRate = baseSalary / 26;
+    const presentDaysForBase = Math.min(26, daysWorked);
+    const basePayEarned = presentDaysForBase * dailyRate;
+    const lateDeduction = 0;
+    const missedDaysDeductions = Math.max(0, baseSalary - basePayEarned);
+    const deductions = missedDaysDeductions;
+    const attendanceBonus = onTimeDays >= 26 ? 200 : 0;
     const orderBonus = completedOrders.reduce((sum, o) => sum + o.payout, 0);
 
-    // 6. Team Leader Daily Volume Bonus
     let teamVolumeBonus = 0;
     if (gamer.gamer_role === 'team_leader') {
       const currentTeamMembers = gamers.filter((g) => g.team_leader_id === gamerId);
       const currentTeamGamerIds = currentTeamMembers.map((m) => m.id);
 
-      // Find attendance records for these team members or leader in this cycle
       const teamAttendance = attendance.filter((a) => {
         if (getAttendancePeriodLabel(a.date) !== cycleLabel) return false;
         if (a.gamer_id === gamerId) return true;
@@ -1093,13 +1281,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return currentTeamGamerIds.includes(a.gamer_id);
       });
 
-      // Group by daily local date string and sum farmed_millions
       const dailyTotals: { [dateStr: string]: number } = {};
       teamAttendance.forEach((a) => {
         dailyTotals[a.date] = (dailyTotals[a.date] || 0) + Number(a.farmed_millions || 0);
       });
 
-      // Calculate bonuses: K10 for every 10 Million above 50 Million
       Object.values(dailyTotals).forEach((total) => {
         if (total > 50) {
           const over = total - 50;
@@ -1110,7 +1296,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       });
 
-      // Apply team leader bonus adjustment (e.g. Gilbert Phiri +K40 bonus)
       const nameLower = (gamer.name || '').toLowerCase();
       const isGilbert = nameLower.includes('gilbert') || nameLower.includes('phiri');
       const bonusAdjustment = gamer.bonus_adjustment !== undefined ? gamer.bonus_adjustment : (isGilbert ? 40 : 0);
@@ -1137,6 +1322,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       orderBonus,
       teamVolumeBonus,
       totalPay,
+      isNewStructure: false,
     };
   };
 
@@ -1166,27 +1352,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const result: DailyGamerEarnings[] = [];
 
+    const isNewCycle = isNewSalaryStructureCycle(cycleLabel);
+
     uniqueDates.forEach((dateStr) => {
+      const isNewDate = dateStr >= '2026-08-16';
+
       activeGamers.forEach((gamer) => {
-        // Base Salary & Daily Rate
-        let baseSalary = 1200;
-        if (gamer.gamer_role === 'technical_manager') baseSalary = 4500;
-        else if (gamer.gamer_role === 'team_leader') baseSalary = 2200;
-        else if (gamer.level === 'intermediate') baseSalary = 1800;
-        else if (gamer.level === 'advanced') baseSalary = 2500;
-
-        const dailyRate = baseSalary / 26;
-
         // Attendance record for gamer on this date
         const att = attendance.find((a) => a.gamer_id === gamer.id && a.date === dateStr);
         const farmedMillions = Number(att?.farmed_millions || 0);
         const attendanceStatus = att ? att.status : 'no_log';
-
-        // Base Pay Earned: If present on date, daily rate
-        let basePayEarned = 0;
-        if (att && (att.status === 'present_on_time' || att.status === 'present_late')) {
-          basePayEarned = Number(dailyRate.toFixed(2));
-        }
+        const isPresent = att && (att.status === 'present_on_time' || att.status === 'present_late');
 
         // Completed orders on this date for gamer
         const gamerCompletedOrders = orders.filter((o) => {
@@ -1195,36 +1371,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return orderDate === dateStr;
         });
 
-        const orderBonus = gamerCompletedOrders.reduce((sum, o) => sum + Number(o.payout || 0), 0);
-
-        // Team volume bonus for team leader on this date
+        let basePayEarned = 0;
+        let orderBonus = 0;
         let teamVolumeBonus = 0;
-        if (gamer.gamer_role === 'team_leader') {
-          const currentTeamMembers = gamers.filter((g) => g.team_leader_id === gamer.id);
-          const currentTeamGamerIds = currentTeamMembers.map((m) => m.id);
 
-          const dailyTeamAttendance = attendance.filter((a) => {
-            if (a.date !== dateStr) return false;
-            if (a.gamer_id === gamer.id) return true;
-            if (a.team_leader_id !== undefined && a.team_leader_id !== null) {
-              return a.team_leader_id === gamer.id;
-            }
-            return currentTeamGamerIds.includes(a.gamer_id);
-          });
-          const dailyVolume = dailyTeamAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
-          if (dailyVolume > 50) {
-            const over = dailyVolume - 50;
-            const tens = Math.floor(over / 10);
-            if (tens > 0) {
-              teamVolumeBonus = tens * 10;
-            }
+        if (isNewDate) {
+          // New Structure Daily Base: (K200/26 Attendance) + (K10 Transport) + (K200/26 TL Allowance if TL)
+          if (isPresent) {
+            const dailyAttendance = 200 / 26; // ~7.69
+            const dailyTransport = 10;
+            const dailyTL = gamer.gamer_role === 'team_leader' ? (200 / 26) : 0;
+            basePayEarned = Number((dailyAttendance + dailyTransport + dailyTL).toFixed(2));
           }
+          orderBonus = gamerCompletedOrders.reduce((sum, o) => sum + Number(o.payout || 0), 0);
+        } else {
+          // Legacy Daily Base
+          let baseSalary = 1200;
+          if (gamer.gamer_role === 'technical_manager') baseSalary = 4500;
+          else if (gamer.gamer_role === 'team_leader') baseSalary = 2200;
+          else if (gamer.level === 'intermediate') baseSalary = 1800;
+          else if (gamer.level === 'advanced') baseSalary = 2500;
 
-          // Apply team leader bonus adjustment (e.g. Gilbert Phiri +K40 bonus)
-          const nameLower = (gamer.name || '').toLowerCase();
-          const isGilbert = nameLower.includes('gilbert') || nameLower.includes('phiri');
-          const bonusAdjustment = gamer.bonus_adjustment !== undefined ? gamer.bonus_adjustment : (isGilbert ? 40 : 0);
-          teamVolumeBonus += bonusAdjustment;
+          const dailyRate = baseSalary / 26;
+          if (isPresent) {
+            basePayEarned = Number(dailyRate.toFixed(2));
+          }
+          orderBonus = gamerCompletedOrders.reduce((sum, o) => sum + Number(o.payout || 0), 0);
+
+          if (gamer.gamer_role === 'team_leader') {
+            const currentTeamMembers = gamers.filter((g) => g.team_leader_id === gamer.id);
+            const currentTeamGamerIds = currentTeamMembers.map((m) => m.id);
+
+            const dailyTeamAttendance = attendance.filter((a) => {
+              if (a.date !== dateStr) return false;
+              if (a.gamer_id === gamer.id) return true;
+              if (a.team_leader_id !== undefined && a.team_leader_id !== null) {
+                return a.team_leader_id === gamer.id;
+              }
+              return currentTeamGamerIds.includes(a.gamer_id);
+            });
+            const dailyVolume = dailyTeamAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
+            if (dailyVolume > 50) {
+              const over = dailyVolume - 50;
+              const tens = Math.floor(over / 10);
+              if (tens > 0) {
+                teamVolumeBonus += tens * 10;
+              }
+            }
+
+            const nameLower = (gamer.name || '').toLowerCase();
+            const isGilbert = nameLower.includes('gilbert') || nameLower.includes('phiri');
+            const bonusAdjustment = gamer.bonus_adjustment !== undefined ? gamer.bonus_adjustment : (isGilbert ? 40 : 0);
+            teamVolumeBonus += bonusAdjustment;
+          }
         }
 
         const totalDailyEarned = Number((basePayEarned + orderBonus + teamVolumeBonus).toFixed(2));
