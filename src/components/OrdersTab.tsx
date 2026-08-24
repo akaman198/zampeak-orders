@@ -635,18 +635,22 @@ export default function OrdersTab() {
                       >
                         Order Code {sortBy === 'order_number' && (sortDirection === 'asc' ? '▲' : '▼')}
                       </th>
-                      {isManager && <th className="p-3">Gamer Details</th>}
+                      {isManager ? (
+                        <th className="p-3">Gamer Details</th>
+                      ) : (
+                        <th className="p-3">Mission Type / Partner</th>
+                      )}
                       <th 
                         className="p-3 text-right cursor-pointer hover:text-cyber-cyan transition-colors"
                         onClick={() => toggleSort('size')}
                       >
-                        Size {sortBy === 'size' && (sortDirection === 'asc' ? '▲' : '▼')}
+                        Size &amp; Quota {sortBy === 'size' && (sortDirection === 'asc' ? '▲' : '▼')}
                       </th>
                       <th 
                         className="p-3 text-right cursor-pointer hover:text-cyber-cyan transition-colors"
                         onClick={() => toggleSort('payout')}
                       >
-                        Payout (K) {sortBy === 'payout' && (sortDirection === 'asc' ? '▲' : '▼')}
+                        {isManager ? 'Payout (K)' : 'My Payout Share'} {sortBy === 'payout' && (sortDirection === 'asc' ? '▲' : '▼')}
                       </th>
                       <th 
                         className="p-3 cursor-pointer hover:text-cyber-cyan transition-colors"
@@ -662,6 +666,8 @@ export default function OrdersTab() {
                     {filteredOrders.map((order) => {
                       const assignedGamer = gamers.find(g => g.id === order.gamer_id);
                       const coGamer = order.co_gamer_id ? gamers.find(g => g.id === order.co_gamer_id) : null;
+                      const isDual = !!order.co_gamer_id;
+                      const effectivePayout = isDual ? Number(order.payout || 0) / 2 : Number(order.payout || 0);
 
                       return (
                         <tr key={order.id} className="hover:bg-slate-900/30 transition-colors">
@@ -673,12 +679,12 @@ export default function OrdersTab() {
                               </span>
                             )}
                           </td>
-                          {isManager && (
+                          {isManager ? (
                             <td className="p-3">
                               <div className="font-bold text-slate-300">
                                 {assignedGamer ? assignedGamer.name : 'Unknown Gamer'}
                                 {coGamer && (
-                                  <span className="text-cyber-green font-bold"> & {coGamer.name}</span>
+                                  <span className="text-cyber-green font-bold"> &amp; {coGamer.name}</span>
                                 )}
                               </div>
                               <div className="text-[10px] text-slate-500 font-mono">
@@ -686,9 +692,28 @@ export default function OrdersTab() {
                                 {coGamer ? ` | ID: ${coGamer.employee_id}` : ''}
                               </div>
                             </td>
+                          ) : (
+                            <td className="p-3">
+                              {isDual ? (
+                                <div>
+                                  <span className="text-cyber-green font-bold text-[11px] block">⚡ 50/50 Shared Mission</span>
+                                  <span className="text-[10px] text-slate-400">
+                                    Partner: {order.gamer_id === gamerProfile?.id ? (coGamer?.name || 'Co-Runner') : (assignedGamer?.name || 'Primary Runner')}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 uppercase">Solo Assignment</span>
+                              )}
+                            </td>
                           )}
                           <td className="p-3 text-right font-bold text-slate-300">
-                            {formatM(order.size_millions)}M
+                            {isDual ? (
+                              <>
+                                <div>{formatM(order.size_millions / 2)}M <span className="text-[9px] text-slate-400 font-normal">my share ({formatM(order.size_millions)}M total)</span></div>
+                              </>
+                            ) : (
+                              <div>{formatM(order.size_millions)}M</div>
+                            )}
                             <span className="text-[9px] text-cyber-cyan font-bold block">
                               {order.co_gamer_id ? (
                                 order.size_millions > 100 ? (
@@ -711,8 +736,11 @@ export default function OrdersTab() {
                             <span className="text-[9px] text-slate-500 font-normal block">{order.asset_type || 'Haval Coins'}</span>
                           </td>
                           <td className="p-3 text-right font-bold text-cyber-green">
-                            K{order.payout}
-                            {order.payout !== order.size_millions && (
+                            K{isManager ? order.payout : effectivePayout}
+                            {isDual && !isManager && (
+                              <span className="text-[8px] text-slate-500 font-normal block">(50% of K{order.payout})</span>
+                            )}
+                            {order.payout !== order.size_millions && isManager && (
                               <span className="text-[8px] text-cyber-cyan font-bold block">(Override)</span>
                             )}
                           </td>

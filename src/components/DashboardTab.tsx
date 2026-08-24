@@ -328,9 +328,33 @@ export default function DashboardTab({
       </div>
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+        {/* For Gamer: Orders (26 Target) KPI */}
+        {role === 'gamer' && gamerProfile && (
+          (() => {
+            const gamerPayroll = calculatePayroll(gamerProfile.id, selectedCycle);
+            return (
+              <div className="tactical-panel p-4 rounded clip-corners border border-cyber-cyan/50 relative overflow-hidden group shadow-neon-cyan/10 col-span-1">
+                <div className="font-mono text-xs text-cyber-cyan uppercase tracking-widest font-bold">Orders (26 Target)</div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-3xl font-mono font-black text-cyber-cyan text-glow-cyan">
+                    {gamerPayroll.completedOrdersCount || 0}/26
+                  </span>
+                  <span className="text-xs text-slate-400 font-mono">Units</span>
+                </div>
+                <div className="mt-2 text-[10px] text-slate-400 font-mono flex justify-between">
+                  <span className="text-cyber-green font-bold">K{(gamerPayroll.responsibilitySalary || 0).toFixed(2)} Base</span>
+                  <span className="text-slate-400">
+                    {(gamerPayroll.excessOrdersCount || 0) > 0 ? `+${gamerPayroll.excessOrdersCount} Excess` : `${Math.max(0, 26 - (gamerPayroll.completedOrdersCount || 0))} needed`}
+                  </span>
+                </div>
+              </div>
+            );
+          })()
+        )}
+
         {/* Total Orders */}
-        <div className="tactical-panel p-4 rounded clip-corners border border-cyber-border/40 relative overflow-hidden group">
+        <div className="tactical-panel p-4 rounded clip-corners border border-cyber-border/40 relative overflow-hidden group col-span-1">
           <div className="absolute right-2 bottom-2 text-cyber-cyan/10 group-hover:text-cyber-cyan/20 transition-colors">
             <Gamepad2 size={64} />
           </div>
@@ -346,11 +370,11 @@ export default function DashboardTab({
         </div>
 
         {/* Total Earnings */}
-        <div className="tactical-panel p-4 rounded clip-corners border border-cyber-border/40 relative overflow-hidden group">
+        <div className="tactical-panel p-4 rounded clip-corners border border-cyber-border/40 relative overflow-hidden group col-span-1">
           <div className="absolute right-2 bottom-2 text-cyber-green/10 group-hover:text-cyber-green/20 transition-colors">
             <DollarSign size={64} />
           </div>
-          <div className="font-mono text-xs text-slate-400 uppercase tracking-widest font-bold">{isAdminOrViewer ? 'Total Expected Pay' : 'My Earnings'}</div>
+          <div className="font-mono text-xs text-slate-400 uppercase tracking-widest font-bold">{isAdminOrViewer ? 'Total Expected Pay' : 'My Net Pay'}</div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-3xl font-mono font-black text-cyber-green text-glow-green">K{totalEarnings}</span>
             <span className="text-xs text-slate-500 font-mono">Kwacha</span>
