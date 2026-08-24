@@ -38,6 +38,8 @@ export default function OrdersTab() {
   const [status, setStatus] = useState<OrderStatus>('Running');
   const [payout, setPayout] = useState<number>(50);
   const [progressMillions, setProgressMillions] = useState<number>(0);
+  const [isDualRunner, setIsDualRunner] = useState<boolean>(false);
+  const [coGamerId, setCoGamerId] = useState<string>('');
   const [isPayoutOverridden, setIsPayoutOverridden] = useState(false);
   const [formError, setFormError] = useState('');
   const [gamerSearchQuery, setGamerSearchQuery] = useState('');
@@ -106,6 +108,8 @@ export default function OrdersTab() {
     setStatus('Running');
     setPayout(50);
     setProgressMillions(0);
+    setIsDualRunner(false);
+    setCoGamerId('');
     setIsPayoutOverridden(false);
     setFormError('');
     setGamerSearchQuery('');
@@ -118,6 +122,8 @@ export default function OrdersTab() {
     setIsEditing(order);
     setOrderNumber(order.order_number);
     setGamerId(order.gamer_id);
+    setIsDualRunner(!!order.co_gamer_id);
+    setCoGamerId(order.co_gamer_id || '');
     setSizeMillions(order.size_millions);
     setAssetType(order.asset_type || 'Haval Coins');
     setStartDate(new Date(order.start_date).toISOString().slice(0, 16));
@@ -145,8 +151,17 @@ export default function OrdersTab() {
       setFormError('Order Size must be positive.');
       return;
     }
+    if (isDualRunner && !coGamerId) {
+      setFormError('Please select a secondary (co-runner) gamer for shared order.');
+      return;
+    }
+    if (isDualRunner && coGamerId === gamerId) {
+      setFormError('Primary runner and secondary runner cannot be the same operator.');
+      return;
+    }
 
     const formattedDate = new Date(startDate).toISOString();
+    const finalCoGamer = isDualRunner ? coGamerId : null;
 
     if (isEditing) {
       const res = await updateOrder(
@@ -158,7 +173,8 @@ export default function OrdersTab() {
         formattedDate,
         status,
         payout,
-        progressMillions
+        progressMillions,
+        finalCoGamer
       );
       if (res.success) {
         setIsFormOpen(false);
@@ -181,7 +197,8 @@ export default function OrdersTab() {
         formattedDate,
         status,
         payout,
-        progressMillions
+        progressMillions,
+        finalCoGamer
       );
       if (res.success) {
         setIsFormOpen(false);
@@ -379,6 +396,56 @@ export default function OrdersTab() {
                 </div>
               </div>
 
+              {/* Dual Runner / Shared Order 50/50 Toggle */}
+              <div className="p-3 bg-slate-900/50 rounded border border-cyber-border/40 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-slate-300 font-bold uppercase text-[11px] flex items-center gap-2 cursor-pointer select-none">
+                    <input 
+                      type="checkbox"
+                      checked={isDualRunner}
+                      onChange={(e) => {
+                        setIsDualRunner(e.target.checked);
+                        if (!e.target.checked) setCoGamerId('');
+                      }}
+                      className="rounded border-cyber-border text-cyber-cyan focus:ring-0 cursor-pointer w-4 h-4"
+                    />
+                    <span>Dual Runner Mission (Shared 50/50 Split)</span>
+                  </label>
+                  {isDualRunner && (
+                    <span className="text-[10px] text-cyber-cyan font-bold bg-cyber-cyan/10 px-1.5 py-0.5 rounded border border-cyber-cyan/20">
+                      50% Split Active
+                    </span>
+                  )}
+                </div>
+
+                {isDualRunner && (
+                  <div className="space-y-2 pt-2 border-t border-cyber-border/30">
+                    <label className="text-slate-400 uppercase tracking-wider block text-[10px]">Assign Secondary (Co-Runner) Gamer</label>
+                    <select 
+                      value={coGamerId} 
+                      onChange={(e) => setCoGamerId(e.target.value)}
+                      className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer"
+                    >
+                      <option value="" disabled>Select co-runner...</option>
+                      {filteredGamersForSelect
+                        .filter(g => g.gamer_role !== 'technical_manager' && g.id !== gamerId)
+                        .map(g => (
+                          <option key={g.id} value={g.id}>{g.name} (ID: {g.employee_id})</option>
+                        ))
+                      }
+                    </select>
+                    <div className="text-[10px] text-cyber-green bg-cyber-green/5 p-2 rounded border border-cyber-green/20">
+                      ⚡ <strong>50/50 Shared Split:</strong> {sizeMillions}M will be split as <strong>{sizeMillions / 2}M ({Math.floor((sizeMillions / 2) / 10)} orders)</strong> to each runner.
+                      {sizeMillions > 100 && (
+                        <span className="block mt-0.5 text-slate-300">
+                          Each 100M milestone hit awards <strong>5 completed orders (50M)</strong> to each runner.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Size (in millions) */}
                 <div className="space-y-1">
@@ -574,25 +641,51 @@ export default function OrdersTab() {
                   <tbody className="divide-y divide-cyber-border/30">
                     {filteredOrders.map((order) => {
                       const assignedGamer = gamers.find(g => g.id === order.gamer_id);
+                      const coGamer = order.co_gamer_id ? gamers.find(g => g.id === order.co_gamer_id) : null;
 
                       return (
                         <tr key={order.id} className="hover:bg-slate-900/30 transition-colors">
-                          <td className="p-3 text-cyber-cyan font-bold">{order.order_number}</td>
+                          <td className="p-3 text-cyber-cyan font-bold">
+                            {order.order_number}
+                            {coGamer && (
+                              <span className="text-[8px] text-cyber-green bg-cyber-green/10 border border-cyber-green/30 px-1 py-0.5 rounded ml-1.5 uppercase font-mono inline-block">
+                                50/50 Dual
+                              </span>
+                            )}
+                          </td>
                           {isManager && (
                             <td className="p-3">
-                              <div className="font-bold text-slate-300">{assignedGamer ? assignedGamer.name : 'Unknown Gamer'}</div>
-                              <div className="text-[10px] text-slate-500">{assignedGamer ? `ID: ${assignedGamer.employee_id}` : ''}</div>
+                              <div className="font-bold text-slate-300">
+                                {assignedGamer ? assignedGamer.name : 'Unknown Gamer'}
+                                {coGamer && (
+                                  <span className="text-cyber-green font-bold"> & {coGamer.name}</span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-mono">
+                                {assignedGamer ? `ID: ${assignedGamer.employee_id}` : ''}
+                                {coGamer ? ` | ID: ${coGamer.employee_id}` : ''}
+                              </div>
                             </td>
                           )}
                           <td className="p-3 text-right font-bold text-slate-300">
                             {formatM(order.size_millions)}M
                             <span className="text-[9px] text-cyber-cyan font-bold block">
-                              {order.size_millions > 100 ? (
-                                order.status === 'Completed' 
-                                  ? `${Math.floor(order.size_millions / 10)} Orders (Full)` 
-                                  : `${Math.floor((order.progress_millions || 0) / 100) * 10}/${Math.floor(order.size_millions / 10)} Orders (${order.progress_millions || 0}M hit)`
+                              {order.co_gamer_id ? (
+                                order.size_millions > 100 ? (
+                                  order.status === 'Completed' 
+                                    ? `${Math.floor(order.size_millions / 20)} Orders each (300M each)` 
+                                    : `${Math.floor((order.progress_millions || 0) / 100) * 5}/${Math.floor(order.size_millions / 20)} Orders each (${order.progress_millions || 0}M hit)`
+                                ) : (
+                                  `${Math.floor(order.size_millions / 20)} Orders each (${order.size_millions / 2}M each)`
+                                )
                               ) : (
-                                `${Math.floor(order.size_millions / 10)} Orders (10M/unit)`
+                                order.size_millions > 100 ? (
+                                  order.status === 'Completed' 
+                                    ? `${Math.floor(order.size_millions / 10)} Orders (Full)` 
+                                    : `${Math.floor((order.progress_millions || 0) / 100) * 10}/${Math.floor(order.size_millions / 10)} Orders (${order.progress_millions || 0}M hit)`
+                                ) : (
+                                  `${Math.floor(order.size_millions / 10)} Orders (10M/unit)`
+                                )
                               )}
                             </span>
                             <span className="text-[9px] text-slate-500 font-normal block">{order.asset_type || 'Haval Coins'}</span>

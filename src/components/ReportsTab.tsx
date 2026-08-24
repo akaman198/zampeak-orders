@@ -213,31 +213,31 @@ export default function ReportsTab() {
   // Monthly Order Quantities & Completion Statistics per Employee
   const monthlyOrderStats = activeOperators.map(g => {
     const gamerCompletedOrders = orders.filter(
-      o => o.gamer_id === g.id && o.status === 'Completed' && getOrderPeriodLabel(o.completed_date || o.start_date) === selectedCycle
+      o => (o.gamer_id === g.id || o.co_gamer_id === g.id) && o.status === 'Completed' && getOrderPeriodLabel(o.completed_date || o.start_date) === selectedCycle
     );
     const gamerRunningOrders = orders.filter(
-      o => o.gamer_id === g.id && o.status === 'Running'
+      o => (o.gamer_id === g.id || o.co_gamer_id === g.id) && o.status === 'Running'
     );
     const gamerAllCycleOrders = orders.filter(
-      o => o.gamer_id === g.id && (getOrderPeriodLabel(o.completed_date || o.start_date) === selectedCycle || getOrderPeriodLabel(o.start_date) === selectedCycle)
+      o => (o.gamer_id === g.id || o.co_gamer_id === g.id) && (getOrderPeriodLabel(o.completed_date || o.start_date) === selectedCycle || getOrderPeriodLabel(o.start_date) === selectedCycle)
     );
 
     const completedCount = gamerCompletedOrders.length;
     const runningCount = gamerRunningOrders.length;
-    const totalVolumeM = gamerCompletedOrders.reduce((sum, o) => sum + Number(o.size_millions || 0), 0);
+    const totalVolumeM = gamerCompletedOrders.reduce((sum, o) => sum + (o.co_gamer_id ? Number(o.size_millions || 0) / 2 : Number(o.size_millions || 0)), 0);
     const validOrderUnits = isNewStructure
-      ? gamerAllCycleOrders.reduce((sum, o) => sum + calculateOrderUnits(o), 0)
+      ? gamerAllCycleOrders.reduce((sum, o) => sum + calculateOrderUnits(o, g.id), 0)
       : completedCount;
     
     const havalVolumeM = gamerCompletedOrders
       .filter(o => o.asset_type === 'Haval Coins')
-      .reduce((sum, o) => sum + Number(o.size_millions || 0), 0);
+      .reduce((sum, o) => sum + (o.co_gamer_id ? Number(o.size_millions || 0) / 2 : Number(o.size_millions || 0)), 0);
     
     const totalAssetsVolumeM = gamerCompletedOrders
       .filter(o => o.asset_type === 'Total Assets')
-      .reduce((sum, o) => sum + Number(o.size_millions || 0), 0);
+      .reduce((sum, o) => sum + (o.co_gamer_id ? Number(o.size_millions || 0) / 2 : Number(o.size_millions || 0)), 0);
 
-    const totalPayout = gamerCompletedOrders.reduce((sum, o) => sum + Number(o.payout || 0), 0);
+    const totalPayout = gamerCompletedOrders.reduce((sum, o) => sum + (o.co_gamer_id ? Number(o.payout || 0) / 2 : Number(o.payout || 0)), 0);
     const avgOrderSize = completedCount > 0 ? totalVolumeM / completedCount : 0;
     const completionRate = gamerAllCycleOrders.length > 0
       ? Math.round((completedCount / gamerAllCycleOrders.length) * 100)
@@ -286,12 +286,20 @@ export default function ReportsTab() {
       }
     }).map(o => {
       const gamer = gamers.find(g => g.id === o.gamer_id);
+      const coGamer = o.co_gamer_id ? gamers.find(g => g.id === o.co_gamer_id) : null;
       const compDate = (o.completed_date || o.start_date).slice(0, 10);
+      const gamerName = coGamer 
+        ? `${gamer?.name || 'Unknown'} & ${coGamer.name} (Shared 50/50)` 
+        : (gamer?.name || 'Unknown Operator');
+      const employeeId = coGamer
+        ? `${gamer?.employee_id || ''} / ${coGamer.employee_id || ''}`
+        : (gamer?.employee_id || '');
+
       return {
         id: o.id,
         orderNumber: o.order_number,
-        gamerName: gamer?.name || 'Unknown Operator',
-        employeeId: gamer?.employee_id || '',
+        gamerName,
+        employeeId,
         orderVolume: Number(o.size_millions || 0),
         dateCompleted: compDate,
       };
@@ -561,6 +569,7 @@ CREATE TABLE public.orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_number TEXT UNIQUE NOT NULL,
     gamer_id UUID REFERENCES public.gamers(id) ON DELETE RESTRICT NOT NULL,
+    co_gamer_id UUID REFERENCES public.gamers(id) ON DELETE SET NULL,
     size_millions NUMERIC NOT NULL,
     progress_millions NUMERIC DEFAULT 0,
     asset_type TEXT NOT NULL DEFAULT 'Haval Coins',

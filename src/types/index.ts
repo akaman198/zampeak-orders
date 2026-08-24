@@ -35,6 +35,7 @@ export interface Order {
   id: string;
   order_number: string;
   gamer_id: string;
+  co_gamer_id?: string | null; // Secondary runner for shared 50/50 dual-player orders
   size_millions: number;
   progress_millions?: number; // Farmed progress in Millions for large orders (>100M)
   asset_type: AssetType;
