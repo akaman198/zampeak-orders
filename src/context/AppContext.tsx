@@ -253,6 +253,8 @@ export const calculateOrderUnits = (order: Order, forGamerId?: string): number =
     }
   }
 
+  const progress = Number(order.progress_millions || 0);
+
   if (isShared) {
     // If specific runner requested, calculate their 50% share
     if (forGamerId) {
@@ -260,8 +262,7 @@ export const calculateOrderUnits = (order: Order, forGamerId?: string): number =
       if (order.status === 'Completed') {
         return Math.floor(runnerShareVolume / 10);
       }
-      if (size > 100) {
-        const progress = Number(order.progress_millions || 0);
+      if (size >= 100 && progress >= 100) {
         const hundredCount = Math.floor(progress / 100);
         return hundredCount * 5; // 100M total milestone = 50M each = 5 orders each
       }
@@ -271,8 +272,7 @@ export const calculateOrderUnits = (order: Order, forGamerId?: string): number =
       if (order.status === 'Completed') {
         return Math.floor(size / 10);
       }
-      if (size > 100) {
-        const progress = Number(order.progress_millions || 0);
+      if (size >= 100 && progress >= 100) {
         const hundredCount = Math.floor(progress / 100);
         return hundredCount * 10;
       }
@@ -281,18 +281,21 @@ export const calculateOrderUnits = (order: Order, forGamerId?: string): number =
   }
 
   // Single runner
-  if (size <= 100) {
+  if (size < 100) {
     if (order.status === 'Completed') {
       return Math.floor(size / 10);
     }
     return 0;
   } else {
+    // Orders >= 100M
     if (order.status === 'Completed') {
       return Math.floor(size / 10);
     }
-    const progress = Number(order.progress_millions || 0);
-    const completedHundredMillions = Math.floor(progress / 100);
-    return completedHundredMillions * 10;
+    if (progress >= 100) {
+      const hundredCount = Math.floor(progress / 100);
+      return hundredCount * 10;
+    }
+    return 0;
   }
 };
 
@@ -428,9 +431,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setIsDemo(true);
           loadLocalStorage();
         } else {
+          // Merge local cache for unmigrated fields (progress_millions, co_gamer_id)
+          const savedOrdersStr = safeLocalStorage.getItem('zampeak_orders');
+          const localOrdersMap = new Map();
+          if (savedOrdersStr) {
+            try {
+              const parsed: Order[] = JSON.parse(savedOrdersStr);
+              parsed.forEach(o => localOrdersMap.set(o.id, o));
+            } catch (e) {}
+          }
+
+          const mergedOrders = (ordersData || []).map(o => {
+            const local = localOrdersMap.get(o.id);
+            return {
+              ...o,
+              progress_millions: o.progress_millions !== undefined ? Number(o.progress_millions) : (local?.progress_millions !== undefined ? Number(local.progress_millions) : (o.status === 'Completed' ? Number(o.size_millions) : 0)),
+              co_gamer_id: o.co_gamer_id !== undefined ? o.co_gamer_id : (local?.co_gamer_id || null)
+            };
+          });
+
           setGamers(gamersData || []);
-          setOrders(ordersData || []);
+          setOrders(mergedOrders);
           setAttendance(attendanceData || []);
+          safeLocalStorage.setItem('zampeak_orders', JSON.stringify(mergedOrders));
         }
       } catch (err) {
         console.error('Failed to load from Supabase, falling back to local storage:', err);
@@ -904,7 +927,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           error = retryRes.error;
         }
         if (error) throw error;
-        setOrders((prev) => [newOrder, ...prev]);
+        setOrders((prev) => {
+          const updated = [newOrder, ...prev];
+          safeLocalStorage.setItem('zampeak_orders', JSON.stringify(updated));
+          return updated;
+        });
         return { success: true };
       } catch (err: any) {
         console.error('Supabase error, adding order:', err);
@@ -976,9 +1003,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         if (error) throw error;
 
-        setOrders((prev) =>
-          prev.map((o) => (o.id === id ? { ...o, ...updates, co_gamer_id: finalCoGamerId, progress_millions: finalProgress, completed_date: completedDate || undefined } : o))
-        );
+        setOrders((prev) => {
+          const updated = prev.map((o) => (o.id === id ? { ...o, ...updates, co_gamer_id: finalCoGamerId, progress_millions: finalProgress, completed_date: completedDate || undefined } : o));
+          safeLocalStorage.setItem('zampeak_orders', JSON.stringify(updated));
+          return updated;
+        });
         return { success: true };
       } catch (err: any) {
         console.error('Supabase error, updating order:', err);
@@ -1202,8 +1231,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (o.status === 'Completed') {
           return getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel;
         }
-        // Orders > 100M with milestone progress (>= 100M)
-        if (o.size_millions > 100 && (o.progress_millions || 0) >= 100) {
+        // Orders >= 100M with milestone progress (>= 100M)
+        const sizeM = Number(o.size_millions || 0);
+        const progM = Number(o.progress_millions || 0);
+        if (sizeM >= 100 && progM >= 100) {
           return getOrderPeriodLabel(o.start_date) === cycleLabel;
         }
         return false;

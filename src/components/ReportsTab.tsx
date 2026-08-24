@@ -129,6 +129,7 @@ export default function ReportsTab() {
   const totalTeamIncentive = payrollSummaries.reduce((sum, p) => sum + (p.teamIncentive || 0), 0);
   const totalAdditionalPerformanceAward = payrollSummaries.reduce((sum, p) => sum + (p.additionalPerformanceAward || 0), 0);
   
+  const totalValidOrderUnitsAll = payrollSummaries.reduce((sum, p) => sum + (p.completedOrdersCount || 0), 0);
   // Completed order stats for cycle
   const cycleOrders = orders.filter(
     o => o.status === 'Completed' && getOrderPeriodLabel(o.completed_date || o.start_date) === selectedCycle
@@ -807,7 +808,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                       <tr className="border-t-2 border-cyber-cyan bg-cyber-dark/40 font-bold text-slate-200 print:text-black text-[10px]">
                         <td className="py-3 px-2 uppercase font-black" colSpan={3}>SYSTEM TOTALS</td>
                         <td className="py-3 px-2 text-center font-black">-</td>
-                        <td className="py-3 px-2 text-center font-black text-cyber-cyan">{totalCompletedMissions}</td>
+                        <td className="py-3 px-2 text-center font-black text-cyber-cyan">{totalValidOrderUnitsAll}</td>
                         <td className="py-3 px-2 text-right font-black">K{totalResponsibilitySalary.toLocaleString()}</td>
                         <td className="py-3 px-2 text-right font-black">K{totalAttendanceSalary.toLocaleString()}</td>
                         <td className="py-3 px-2 text-right font-black">K{totalTransportAllowance.toLocaleString()}</td>
