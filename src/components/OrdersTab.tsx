@@ -37,6 +37,7 @@ export default function OrdersTab() {
   const [startDate, setStartDate] = useState('');
   const [status, setStatus] = useState<OrderStatus>('Running');
   const [payout, setPayout] = useState<number>(50);
+  const [progressMillions, setProgressMillions] = useState<number>(0);
   const [isPayoutOverridden, setIsPayoutOverridden] = useState(false);
   const [formError, setFormError] = useState('');
   const [gamerSearchQuery, setGamerSearchQuery] = useState('');
@@ -104,6 +105,7 @@ export default function OrdersTab() {
     setStartDate(now.toISOString().slice(0, 16));
     setStatus('Running');
     setPayout(50);
+    setProgressMillions(0);
     setIsPayoutOverridden(false);
     setFormError('');
     setGamerSearchQuery('');
@@ -121,6 +123,7 @@ export default function OrdersTab() {
     setStartDate(new Date(order.start_date).toISOString().slice(0, 16));
     setStatus(order.status);
     setPayout(order.payout);
+    setProgressMillions(order.progress_millions || (order.status === 'Completed' ? order.size_millions : 0));
     setIsPayoutOverridden(order.payout !== order.size_millions);
     setFormError('');
     setGamerSearchQuery('');
@@ -154,7 +157,8 @@ export default function OrdersTab() {
         assetType,
         formattedDate,
         status,
-        payout
+        payout,
+        progressMillions
       );
       if (res.success) {
         setIsFormOpen(false);
@@ -176,7 +180,8 @@ export default function OrdersTab() {
         assetType,
         formattedDate,
         status,
-        payout
+        payout,
+        progressMillions
       );
       if (res.success) {
         setIsFormOpen(false);
@@ -418,7 +423,13 @@ export default function OrdersTab() {
                   <label className="text-slate-400 uppercase tracking-wider">Current Status</label>
                   <select 
                     value={status} 
-                    onChange={(e) => setStatus(e.target.value as OrderStatus)}
+                    onChange={(e) => {
+                      const newStatus = e.target.value as OrderStatus;
+                      setStatus(newStatus);
+                      if (newStatus === 'Completed') {
+                        setProgressMillions(sizeMillions);
+                      }
+                    }}
                     className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer"
                   >
                     <option value="Running">Running</option>
@@ -429,6 +440,43 @@ export default function OrdersTab() {
                   </select>
                 </div>
               </div>
+
+              {/* Large Order (>100M) Milestone Progress Tracker */}
+              {sizeMillions > 100 && (
+                <div className="p-3 bg-slate-900/60 rounded border border-cyber-cyan/30 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-cyber-cyan uppercase font-bold text-[11px]">
+                      Large Order Milestone Progress (Hit every 100M)
+                    </label>
+                    <span className="text-[10px] text-cyber-green font-bold">
+                      {Math.floor(progressMillions / 100) * 10} / {Math.floor(sizeMillions / 10)} Orders Credited
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="number" 
+                      min="0"
+                      max={sizeMillions}
+                      step="10"
+                      value={progressMillions}
+                      onChange={(e) => setProgressMillions(Math.min(sizeMillions, Math.max(0, Number(e.target.value))))}
+                      className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyber-cyan"
+                      placeholder="Progress in Millions (e.g. 100, 200, 300)"
+                    />
+                    <span className="text-xs text-slate-400 font-bold">M</span>
+                  </div>
+                  <p className="text-[9px] text-slate-400">
+                    Each completed 100M milestone adds 10 completed orders (in 10M chunks). Full order adds {Math.floor(sizeMillions / 10)} orders upon completion.
+                  </p>
+                </div>
+              )}
+
+              {/* Small Order (<=100M) Info Note */}
+              {sizeMillions <= 100 && (
+                <div className="text-[10px] text-slate-400 px-1 font-mono">
+                  Standard Order: {Math.floor(sizeMillions / 10)} completed orders (in 10M chunks) credited when marked Completed.
+                </div>
+              )}
 
               {/* Payout */}
               <div className="space-y-1">
@@ -538,6 +586,15 @@ export default function OrdersTab() {
                           )}
                           <td className="p-3 text-right font-bold text-slate-300">
                             {formatM(order.size_millions)}M
+                            <span className="text-[9px] text-cyber-cyan font-bold block">
+                              {order.size_millions > 100 ? (
+                                order.status === 'Completed' 
+                                  ? `${Math.floor(order.size_millions / 10)} Orders (Full)` 
+                                  : `${Math.floor((order.progress_millions || 0) / 100) * 10}/${Math.floor(order.size_millions / 10)} Orders (${order.progress_millions || 0}M hit)`
+                              ) : (
+                                `${Math.floor(order.size_millions / 10)} Orders (10M/unit)`
+                              )}
+                            </span>
                             <span className="text-[9px] text-slate-500 font-normal block">{order.asset_type || 'Haval Coins'}</span>
                           </td>
                           <td className="p-3 text-right font-bold text-cyber-green">

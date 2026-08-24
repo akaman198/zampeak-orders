@@ -60,7 +60,8 @@ interface AppContextType {
     assetType: AssetType,
     startDate: string,
     status: OrderStatus,
-    payoutOverride?: number
+    payoutOverride?: number,
+    progressMillions?: number
   ) => Promise<{ success: boolean; error?: string }>;
   updateOrder: (
     id: string,
@@ -70,7 +71,8 @@ interface AppContextType {
     assetType: AssetType,
     startDate: string,
     status: OrderStatus,
-    payoutOverride?: number
+    payoutOverride?: number,
+    progressMillions?: number
   ) => Promise<{ success: boolean; error?: string }>;
   deleteOrder: (id: string) => Promise<{ success: boolean; error?: string }>;
   updateOrderStatus: (id: string, status: OrderStatus) => Promise<{ success: boolean; error?: string }>;
@@ -218,6 +220,32 @@ export const isNewSalaryStructureCycle = (cycleLabel: string): boolean => {
   // Cutoff is August 15, 2026. Cycles ending AFTER August 15, 2026 (starting from 16th August 2026) use the new salary structure.
   const cutoffDate = new Date(2026, 7, 15);
   return cycleEndDate.getTime() > cutoffDate.getTime();
+};
+
+/**
+ * Calculates the valid completed order count (in 10M units):
+ * - For orders <= 100M: Only added when the whole order is 'Completed' (size_millions / 10).
+ * - For orders > 100M: Added each time the runner hits 100M milestones (Math.floor(progress_millions / 100) * 10).
+ *   When the whole order is marked 'Completed', the entire volume (size_millions / 10) is added.
+ */
+export const calculateOrderUnits = (order: Order): number => {
+  const size = Number(order.size_millions || 0);
+  if (size <= 0) return 0;
+
+  if (size <= 100) {
+    if (order.status === 'Completed') {
+      return Math.floor(size / 10);
+    }
+    return 0;
+  } else {
+    // Orders larger than 100M
+    if (order.status === 'Completed') {
+      return Math.floor(size / 10);
+    }
+    const progress = Number(order.progress_millions || 0);
+    const completedHundredMillions = Math.floor(progress / 100);
+    return completedHundredMillions * 10;
+  }
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -785,7 +813,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     assetType: AssetType,
     startDate: string,
     status: OrderStatus,
-    payoutOverride?: number
+    payoutOverride?: number,
+    progressMillions?: number
   ) => {
     const defaultPayout = sizeMillions;
     const finalPayout = payoutOverride !== undefined ? payoutOverride : defaultPayout;
@@ -804,6 +833,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       order_number: orderNumber,
       gamer_id: gamerId,
       size_millions: sizeMillions,
+      progress_millions: progressMillions !== undefined ? progressMillions : (status === 'Completed' ? sizeMillions : 0),
       asset_type: assetType,
       start_date: startDate || new Date().toISOString(),
       status,
@@ -838,7 +868,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     assetType: AssetType,
     startDate: string,
     status: OrderStatus,
-    payoutOverride?: number
+    payoutOverride?: number,
+    progressMillions?: number
   ) => {
     const defaultPayout = sizeMillions;
     const finalPayout = payoutOverride !== undefined ? payoutOverride : defaultPayout;
@@ -855,12 +886,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ? (existing?.completed_date || todayDateStr()) 
       : undefined;
 
+    const finalProgress = progressMillions !== undefined 
+      ? progressMillions 
+      : (status === 'Completed' ? sizeMillions : (existing?.progress_millions || 0));
+
     if (!isDemo && supabase) {
       try {
         const updates = {
           order_number: orderNumber,
           gamer_id: gamerId,
           size_millions: sizeMillions,
+          progress_millions: finalProgress,
           asset_type: assetType,
           start_date: startDate,
           status,
@@ -887,6 +923,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               order_number: orderNumber,
               gamer_id: gamerId,
               size_millions: sizeMillions,
+              progress_millions: finalProgress,
               asset_type: assetType,
               start_date: startDate,
               status,
@@ -1068,11 +1105,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const onTimeDays = cycleAttendance.filter((a) => a.status === 'present_on_time').length;
     const cappedDaysWorked = Math.min(26, daysWorked);
 
-    // 3. Completed orders in cycle
-    const completedOrders = orders.filter(
-      (o) => o.gamer_id === gamerId && o.status === 'Completed' && getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel
-    );
-    const completedOrdersCount = completedOrders.length;
+    // 3. Orders in cycle & completed orders count (10M = 1 completed order)
+    let completedOrdersCount = 0;
+    if (isNew) {
+      const gamerOrdersInCycle = orders.filter((o) => {
+        if (o.gamer_id !== gamerId) return false;
+        if (o.status === 'Completed') {
+          return getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel;
+        }
+        // Orders > 100M with milestone progress (>= 100M)
+        if (o.size_millions > 100 && (o.progress_millions || 0) >= 100) {
+          return getOrderPeriodLabel(o.start_date) === cycleLabel;
+        }
+        return false;
+      });
+
+      completedOrdersCount = gamerOrdersInCycle.reduce((sum, o) => sum + calculateOrderUnits(o), 0);
+    } else {
+      const legacyCompleted = orders.filter(
+        (o) => o.gamer_id === gamerId && o.status === 'Completed' && getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel
+      );
+      completedOrdersCount = legacyCompleted.length;
+    }
 
     // =========================================================================
     // NEW SALARY STRUCTURE (Effective from 16th August 2026 / Cycle Sep 15, 2026+)
@@ -1173,10 +1227,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         if (allTeamGamers.length > 0) {
           const teamMemberStats = allTeamGamers.map(m => {
-            const mOrders = orders.filter(
-              o => o.gamer_id === m.id && o.status === 'Completed' && getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel
-            );
-            return { gamer: m, count: mOrders.length };
+            const mOrders = orders.filter((o) => {
+              if (o.gamer_id !== m.id) return false;
+              if (o.status === 'Completed') {
+                return getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel;
+              }
+              if (o.size_millions > 100 && (o.progress_millions || 0) >= 100) {
+                return getOrderPeriodLabel(o.start_date) === cycleLabel;
+              }
+              return false;
+            });
+            const count = mOrders.reduce((sum, o) => sum + calculateOrderUnits(o), 0);
+            return { gamer: m, count };
           });
 
           // Condition: Every member must complete at least 26 orders
@@ -1265,7 +1327,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const missedDaysDeductions = Math.max(0, baseSalary - basePayEarned);
     const deductions = missedDaysDeductions;
     const attendanceBonus = onTimeDays >= 26 ? 200 : 0;
-    const orderBonus = completedOrders.reduce((sum, o) => sum + o.payout, 0);
+    const legacyCompleted = orders.filter(
+      (o) => o.gamer_id === gamerId && o.status === 'Completed' && getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel
+    );
+    const orderBonus = legacyCompleted.reduce((sum, o) => sum + o.payout, 0);
 
     let teamVolumeBonus = 0;
     if (gamer.gamer_role === 'team_leader') {

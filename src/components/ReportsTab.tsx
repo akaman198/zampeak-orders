@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { useApp, getPayPeriodLabel, getOrderPeriodLabel, isNewSalaryStructureCycle } from '../context/AppContext';
+import { useApp, getPayPeriodLabel, getOrderPeriodLabel, isNewSalaryStructureCycle, calculateOrderUnits } from '../context/AppContext';
 import { 
   FileSpreadsheet, 
   Printer, 
@@ -224,6 +224,9 @@ export default function ReportsTab() {
     const completedCount = gamerCompletedOrders.length;
     const runningCount = gamerRunningOrders.length;
     const totalVolumeM = gamerCompletedOrders.reduce((sum, o) => sum + Number(o.size_millions || 0), 0);
+    const validOrderUnits = isNewStructure
+      ? gamerAllCycleOrders.reduce((sum, o) => sum + calculateOrderUnits(o), 0)
+      : completedCount;
     
     const havalVolumeM = gamerCompletedOrders
       .filter(o => o.asset_type === 'Haval Coins')
@@ -246,6 +249,7 @@ export default function ReportsTab() {
       gamerRole: g.gamer_role,
       level: g.level,
       completedCount,
+      validOrderUnits,
       runningCount,
       totalVolumeM,
       havalVolumeM,
@@ -928,11 +932,11 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                             </td>
                             <td className="py-2.5 px-3 text-center">
                               <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                stat.completedCount > 0 
+                                (isNewStructure ? stat.validOrderUnits : stat.completedCount) > 0 
                                   ? 'bg-cyber-green/10 text-cyber-green border border-cyber-green/20' 
                                   : 'bg-slate-800 text-slate-500'
                               }`}>
-                                {stat.completedCount} orders
+                                {isNewStructure ? `${stat.validOrderUnits} units (10M)` : `${stat.completedCount} orders`}
                               </span>
                             </td>
                             <td className="py-2.5 px-3 text-right font-bold text-slate-200">

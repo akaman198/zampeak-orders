@@ -34,6 +34,7 @@ export interface Order {
   order_number: string;
   gamer_id: string;
   size_millions: number;
+  progress_millions?: number; // Farmed progress in Millions for large orders (>100M)
   asset_type: AssetType;
   start_date: string;
   status: OrderStatus;
