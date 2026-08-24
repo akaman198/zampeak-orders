@@ -262,7 +262,7 @@ export const calculateOrderUnits = (order: Order, forGamerId?: string): number =
       if (order.status === 'Completed') {
         return Math.floor(runnerShareVolume / 10);
       }
-      if (size >= 100 && progress >= 100) {
+      if (progress >= 100) {
         const hundredCount = Math.floor(progress / 100);
         return hundredCount * 5; // 100M total milestone = 50M each = 5 orders each
       }
@@ -272,7 +272,7 @@ export const calculateOrderUnits = (order: Order, forGamerId?: string): number =
       if (order.status === 'Completed') {
         return Math.floor(size / 10);
       }
-      if (size >= 100 && progress >= 100) {
+      if (progress >= 100) {
         const hundredCount = Math.floor(progress / 100);
         return hundredCount * 10;
       }
@@ -281,22 +281,14 @@ export const calculateOrderUnits = (order: Order, forGamerId?: string): number =
   }
 
   // Single runner
-  if (size < 100) {
-    if (order.status === 'Completed') {
-      return Math.floor(size / 10);
-    }
-    return 0;
-  } else {
-    // Orders >= 100M
-    if (order.status === 'Completed') {
-      return Math.floor(size / 10);
-    }
-    if (progress >= 100) {
-      const hundredCount = Math.floor(progress / 100);
-      return hundredCount * 10;
-    }
-    return 0;
+  if (order.status === 'Completed') {
+    return Math.floor(size / 10);
   }
+  if (progress >= 100) {
+    const hundredCount = Math.floor(progress / 100);
+    return hundredCount * 10;
+  }
+  return 0;
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -1231,13 +1223,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (o.status === 'Completed') {
           return getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel;
         }
-        // Orders >= 100M with milestone progress (>= 100M)
-        const sizeM = Number(o.size_millions || 0);
+        // Active orders (Running, Paused) with milestone progress or active start date
         const progM = Number(o.progress_millions || 0);
-        if (sizeM >= 100 && progM >= 100) {
-          return getOrderPeriodLabel(o.start_date) === cycleLabel;
+        if (progM >= 100) {
+          return true;
         }
-        return false;
+        return getOrderPeriodLabel(o.start_date) === cycleLabel;
       });
 
       completedOrdersCount = gamerOrdersInCycle.reduce((sum, o) => sum + calculateOrderUnits(o, gamerId), 0);

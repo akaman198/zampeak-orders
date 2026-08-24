@@ -31,9 +31,9 @@ export default function DashboardTab({
   const isManager = role === 'admin' || (role === 'gamer' && gamerProfile?.gamer_role === 'technical_manager');
   const isAdminOrViewer = role === 'admin' || role === 'viewer';
 
-  // Filter orders if user is a gamer
+  // Filter orders if user is a gamer (includes shared dual orders)
   const orders = role === 'gamer' && gamerProfile
-    ? allOrders.filter(o => o.gamer_id === gamerProfile.id)
+    ? allOrders.filter(o => o.gamer_id === gamerProfile.id || o.co_gamer_id === gamerProfile.id)
     : allOrders;
 
 

@@ -51,9 +51,9 @@ export default function OrdersTab() {
   const [sortBy, setSortBy] = useState<'date' | 'order_number' | 'size' | 'payout'>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
-  // Filter orders if user is a gamer
+  // Filter orders if user is a gamer (includes shared dual orders)
   const orders = role === 'gamer' && gamerProfile && gamerProfile.gamer_role !== 'technical_manager'
-    ? allOrders.filter(o => o.gamer_id === gamerProfile.id)
+    ? allOrders.filter(o => o.gamer_id === gamerProfile.id || o.co_gamer_id === gamerProfile.id)
     : allOrders;
 
   const isManager = role === 'admin' || (role === 'gamer' && gamerProfile?.gamer_role === 'technical_manager');
@@ -64,8 +64,8 @@ export default function OrdersTab() {
     const activeGamers = gamers.filter(g => g.status === 'active' && g.gamer_role !== 'technical_manager');
     
     return activeGamers.map(g => {
-      // Find running orders assigned to this gamer
-      const runningMissions = allOrders.filter(o => o.gamer_id === g.id && o.status === 'Running');
+      // Find running orders assigned to this gamer (as primary or co-runner)
+      const runningMissions = allOrders.filter(o => (o.gamer_id === g.id || o.co_gamer_id === g.id) && o.status === 'Running');
       return {
         gamer: g,
         isDeployed: runningMissions.length > 0,
