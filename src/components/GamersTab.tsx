@@ -827,6 +827,93 @@ export default function GamersTab() {
                       </div>
                     </div>
 
+                    {/* Itemized Payroll & Compensation Breakdown */}
+                    {(() => {
+                      const currentCycle = getPayPeriodLabel(new Date().toISOString());
+                      const payroll = calculatePayroll(selectedGamer.id, currentCycle);
+
+                      if (payroll.isNewStructure) {
+                        return (
+                          <div className="p-4 bg-slate-950/70 rounded border border-cyber-border/40 font-mono text-xs space-y-3">
+                            <div className="flex justify-between items-center border-b border-cyber-border/30 pb-2">
+                              <span className="font-bold text-cyber-cyan uppercase tracking-wider text-[11px]">
+                                Monthly Production &amp; Compensation Breakdown ({currentCycle})
+                              </span>
+                              <span className="text-[10px] text-cyber-green font-bold">
+                                Total Net Pay: K{payroll.totalPay.toLocaleString()}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-[11px]">
+                              <div className="flex justify-between py-1 border-b border-cyber-border/20">
+                                <span className="text-slate-400">Responsibility Salary (K800 Target):</span>
+                                <span className="font-bold text-cyber-cyan">
+                                  K{(payroll.responsibilitySalary || 0).toFixed(2)} ({payroll.completedOrdersCount || 0}/26 orders)
+                                </span>
+                              </div>
+
+                              <div className="flex justify-between py-1 border-b border-cyber-border/20">
+                                <span className="text-slate-400">Attendance Salary (K200 Target):</span>
+                                <span className="font-bold text-slate-200">
+                                  K{(payroll.attendanceSalary || 0).toFixed(2)} ({payroll.daysWorked}/26 days)
+                                </span>
+                              </div>
+
+                              <div className="flex justify-between py-1 border-b border-cyber-border/20">
+                                <span className="text-slate-400">Transport Allowance (K10/day):</span>
+                                <span className="font-bold text-cyber-green">
+                                  K{(payroll.transportAllowance || 0).toFixed(2)} ({payroll.daysWorked} days on duty)
+                                </span>
+                              </div>
+
+                              <div className="flex justify-between py-1 border-b border-cyber-border/20">
+                                <span className="text-slate-400">Excess Order Incentive (K10/order):</span>
+                                <span className="font-bold text-cyber-green">
+                                  K{(payroll.excessOrderIncentive || 0).toFixed(2)} 
+                                  {(payroll.excessOrdersCount || 0) > 0 ? ` (+${payroll.excessOrdersCount} excess)` : ' (0 excess)'}
+                                </span>
+                              </div>
+
+                              <div className="flex justify-between py-1 border-b border-cyber-border/20">
+                                <span className="text-slate-400">Overtime Pay (Base K800 / 208 hrs):</span>
+                                <span className="font-bold text-cyber-cyan">
+                                  K{(payroll.overtimePay || 0).toFixed(2)}
+                                  <span className="text-[9px] text-slate-500 font-normal ml-1">
+                                    ({payroll.normalOvertimeHours || 0}h @ 1.5x, {payroll.holidayOvertimeHours || 0}h @ 2.0x)
+                                  </span>
+                                </span>
+                              </div>
+
+                              {selectedGamer.gamer_role === 'team_leader' && (
+                                <div className="flex justify-between py-1 border-b border-cyber-border/20">
+                                  <span className="text-slate-400">TL Management Allowance:</span>
+                                  <span className="font-bold text-cyber-amber">
+                                    K{(payroll.teamLeaderManagementAllowance || 0).toFixed(2)}
+                                  </span>
+                                </div>
+                              )}
+
+                              {(payroll.teamIncentive || 0) > 0 && (
+                                <div className="flex justify-between py-1 border-b border-cyber-border/20">
+                                  <span className="text-slate-400">Team Target Incentive:</span>
+                                  <span className="font-bold text-cyber-green">K{payroll.teamIncentive}</span>
+                                </div>
+                              )}
+
+                              {(payroll.additionalPerformanceAward || 0) > 0 && (
+                                <div className="flex justify-between py-1 border-b border-cyber-border/20">
+                                  <span className="text-slate-400">Additional Performance Award:</span>
+                                  <span className="font-bold text-cyber-cyan">K{payroll.additionalPerformanceAward}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return null;
+                    })()}
+
                     {/* Team Members List (For Team Leaders) */}
                     {selectedGamer.gamer_role === 'team_leader' && (
                       <div className="mt-4 p-4 border border-cyber-border/40 bg-slate-950/60 rounded">
@@ -976,6 +1063,7 @@ export default function GamersTab() {
                                       <th className="py-2 px-2.5 text-right">Base Earned</th>
                                       <th className="py-2 px-2.5 text-center">Status</th>
                                       <th className="py-2 px-2.5 text-right text-cyber-green">Orders Bonus</th>
+                                      <th className="py-2 px-2.5 text-right text-cyber-cyan">Overtime Pay</th>
                                       <th className="py-2 px-2.5 text-right text-cyber-green">Team Bonus</th>
                                       <th className="py-2 px-2.5 text-right text-cyber-cyan font-bold">Daily Total</th>
                                     </tr>
@@ -999,6 +1087,14 @@ export default function GamersTab() {
                                           </span>
                                         </td>
                                         <td className="py-2 px-2.5 text-right text-cyber-green font-bold">K{r.orderBonus}</td>
+                                        <td className="py-2 px-2.5 text-right text-cyber-cyan font-bold">
+                                          K{(r.overtimePay || 0).toFixed(2)}
+                                          {((r.normalOvertimeHours || 0) > 0 || (r.holidayOvertimeHours || 0) > 0) && (
+                                            <span className="text-[8px] text-slate-500 block font-normal">
+                                              {r.normalOvertimeHours || 0}h (1.5x) / {r.holidayOvertimeHours || 0}h (2.0x)
+                                            </span>
+                                          )}
+                                        </td>
                                         <td className="py-2 px-2.5 text-right text-cyber-green font-bold">K{r.teamVolumeBonus}</td>
                                         <td className="py-2 px-2.5 text-right text-cyber-cyan font-bold">K{r.totalDailyEarned.toFixed(2)}</td>
                                       </tr>

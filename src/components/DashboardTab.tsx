@@ -687,6 +687,7 @@ export default function DashboardTab({
                                       <th className="py-1.5 px-2 text-right">Base Earned</th>
                                       <th className="py-1.5 px-2 text-center">Status</th>
                                       <th className="py-1.5 px-2 text-right text-cyber-green">Orders Bonus</th>
+                                      <th className="py-1.5 px-2 text-right text-cyber-cyan">Overtime Pay</th>
                                       <th className="py-1.5 px-2 text-right text-cyber-green">Team Bonus</th>
                                       <th className="py-1.5 px-2 text-right text-cyber-cyan font-bold">Daily Total</th>
                                     </tr>
@@ -710,6 +711,14 @@ export default function DashboardTab({
                                           </span>
                                         </td>
                                         <td className="py-1.5 px-2 text-right text-cyber-green font-bold">K{r.orderBonus}</td>
+                                        <td className="py-1.5 px-2 text-right text-cyber-cyan font-bold">
+                                          K{(r.overtimePay || 0).toFixed(2)}
+                                          {((r.normalOvertimeHours || 0) > 0 || (r.holidayOvertimeHours || 0) > 0) && (
+                                            <span className="text-[8px] text-slate-500 block font-normal">
+                                              {r.normalOvertimeHours || 0}h (1.5x) / {r.holidayOvertimeHours || 0}h (2.0x)
+                                            </span>
+                                          )}
+                                        </td>
                                         <td className="py-1.5 px-2 text-right text-cyber-green font-bold">K{r.teamVolumeBonus}</td>
                                         <td className="py-1.5 px-2 text-right text-cyber-cyan font-bold">K{r.totalDailyEarned.toFixed(2)}</td>
                                       </tr>
