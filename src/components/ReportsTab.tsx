@@ -124,6 +124,7 @@ export default function ReportsTab() {
   const totalAttendanceSalary = payrollSummaries.reduce((sum, p) => sum + (p.attendanceSalary || 0), 0);
   const totalTransportAllowance = payrollSummaries.reduce((sum, p) => sum + (p.transportAllowance || 0), 0);
   const totalExcessOrderIncentive = payrollSummaries.reduce((sum, p) => sum + (p.excessOrderIncentive || 0), 0);
+  const totalOvertimePayAll = payrollSummaries.reduce((sum, p) => sum + (p.overtimePay || 0), 0);
   const totalTLManagementAllowance = payrollSummaries.reduce((sum, p) => sum + (p.teamLeaderManagementAllowance || 0), 0);
   const totalTeamIncentive = payrollSummaries.reduce((sum, p) => sum + (p.teamIncentive || 0), 0);
   const totalAdditionalPerformanceAward = payrollSummaries.reduce((sum, p) => sum + (p.additionalPerformanceAward || 0), 0);
@@ -321,6 +322,9 @@ export default function ReportsTab() {
         'Attendance Salary (K200 Base)',
         'Transport Allowance (K10/day)',
         'Excess Order Incentive',
+        'Normal OT Hours (1.5x)',
+        'Holiday OT Hours (2.0x)',
+        'Overtime Pay',
         'Team Leader Allowance',
         'Team Incentive',
         'Additional Performance Award',
@@ -336,6 +340,9 @@ export default function ReportsTab() {
         (p.attendanceSalary || 0).toFixed(2),
         (p.transportAllowance || 0).toFixed(2),
         (p.excessOrderIncentive || 0).toFixed(2),
+        p.normalOvertimeHours || 0,
+        p.holidayOvertimeHours || 0,
+        (p.overtimePay || 0).toFixed(2),
         (p.teamLeaderManagementAllowance || 0).toFixed(2),
         (p.teamIncentive || 0).toFixed(2),
         (p.additionalPerformanceAward || 0).toFixed(2),
@@ -571,6 +578,8 @@ CREATE TABLE public.attendance (
     date DATE NOT NULL,
     status TEXT NOT NULL,
     farmed_millions NUMERIC NOT NULL DEFAULT 0,
+    normal_overtime_hours NUMERIC DEFAULT 0,
+    holiday_overtime_hours NUMERIC DEFAULT 0,
     team_leader_id UUID REFERENCES public.gamers(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     UNIQUE(gamer_id, date)
@@ -712,6 +721,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                         <th className="py-2.5 px-2 text-right">Attendance (K200)</th>
                         <th className="py-2.5 px-2 text-right">Transport (K10/d)</th>
                         <th className="py-2.5 px-2 text-right text-cyber-green print:text-green-700 font-bold">Excess Orders</th>
+                        <th className="py-2.5 px-2 text-right text-cyber-cyan print:text-cyan-700 font-bold">Overtime Pay</th>
                         <th className="py-2.5 px-2 text-right text-cyber-amber print:text-amber-700 font-bold">TL Allowance</th>
                         <th className="py-2.5 px-2 text-right text-cyber-green print:text-green-700 font-bold">Team Incentive</th>
                         <th className="py-2.5 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black">Net Pay</th>
@@ -751,6 +761,14 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                                 <span className="text-[9px] text-slate-500 block font-normal">+{p.excessOrdersCount} excess</span>
                               )}
                             </td>
+                            <td className="py-3 px-2 text-right font-mono">
+                              <span className="font-bold text-cyber-cyan">K{(p.overtimePay || 0).toFixed(2)}</span>
+                              {((p.normalOvertimeHours || 0) > 0 || (p.holidayOvertimeHours || 0) > 0) && (
+                                <span className="text-[8px] text-slate-500 block">
+                                  {p.normalOvertimeHours || 0}h (1.5x) / {p.holidayOvertimeHours || 0}h (2.0x)
+                                </span>
+                              )}
+                            </td>
                             <td className="py-3 px-2 text-right text-cyber-amber print:text-amber-700">K{(p.teamLeaderManagementAllowance || 0).toFixed(2)}</td>
                             <td className="py-3 px-2 text-right text-cyber-green print:text-green-700">K{(p.teamIncentive || 0).toFixed(2)}</td>
                             <td className="py-3 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black">K{p.totalPay.toLocaleString()}</td>
@@ -785,6 +803,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                         <td className="py-3 px-2 text-right font-black">K{totalAttendanceSalary.toLocaleString()}</td>
                         <td className="py-3 px-2 text-right font-black">K{totalTransportAllowance.toLocaleString()}</td>
                         <td className="py-3 px-2 text-right text-cyber-green print:text-green-700 font-black">K{totalExcessOrderIncentive.toLocaleString()}</td>
+                        <td className="py-3 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black">K{totalOvertimePayAll.toLocaleString()}</td>
                         <td className="py-3 px-2 text-right text-cyber-amber print:text-amber-700 font-black">K{totalTLManagementAllowance.toLocaleString()}</td>
                         <td className="py-3 px-2 text-right text-cyber-green print:text-green-700 font-black">K{totalTeamIncentive.toLocaleString()}</td>
                         <td className="py-3 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black text-xs">

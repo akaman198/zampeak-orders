@@ -25,6 +25,8 @@ export interface AttendanceRecord {
   date: string; // YYYY-MM-DD
   status: AttendanceStatus;
   farmed_millions: number;
+  normal_overtime_hours?: number; // Approved Normal Overtime (1.5x rate: K5.77/hr)
+  holiday_overtime_hours?: number; // Rest Day / Public Holiday Overtime (2.0x rate: K7.69/hr)
   team_leader_id?: string | null;
   created_at: string;
 }
@@ -100,6 +102,10 @@ export interface PayrollSummary {
   teamLeaderManagementAllowance?: number;
   additionalPerformanceAward?: number;
   teamCompletionRate?: number;
+  // Overtime Pay Fields (Base K800 / 208 hrs ≈ K3.85/hr)
+  normalOvertimeHours?: number;
+  holidayOvertimeHours?: number;
+  overtimePay?: number;
 }
 
 export interface TeamSummary {
@@ -133,5 +139,8 @@ export interface DailyGamerEarnings {
   teamVolumeBonus: number;
   totalDailyEarned: number;
   completedOrdersCount: number;
+  normalOvertimeHours?: number;
+  holidayOvertimeHours?: number;
+  overtimePay?: number;
 }
 

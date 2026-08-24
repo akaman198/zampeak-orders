@@ -561,6 +561,14 @@ export default function DashboardTab({
                             <span className="font-bold text-cyber-amber">K{(payroll.teamLeaderManagementAllowance || 0).toFixed(2)}</span>
                           </div>
                         )}
+                        {(payroll.overtimePay || 0) > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Overtime Pay (Base K800):</span>
+                            <span className="font-bold text-cyber-cyan">
+                              K{(payroll.overtimePay || 0).toFixed(2)} ({payroll.normalOvertimeHours || 0}h @ 1.5x, {payroll.holidayOvertimeHours || 0}h @ 2.0x)
+                            </span>
+                          </div>
+                        )}
                         {(payroll.teamIncentive || 0) > 0 && (
                           <div className="flex justify-between">
                             <span className="text-slate-500">Team Incentive:</span>

@@ -31,10 +31,14 @@ export default function AttendanceTab() {
   const [roleFilter, setRoleFilter] = useState<'all' | 'gamer' | 'team_leader' | 'technical_manager'>('all');
   const [saveStatus, setSaveStatus] = useState<{ [gamerId: string]: 'saving' | 'success' | 'error' }>({});
   const [localFarmed, setLocalFarmed] = useState<{ [gamerId: string]: string }>({});
+  const [localNormalOT, setLocalNormalOT] = useState<{ [gamerId: string]: string }>({});
+  const [localHolidayOT, setLocalHolidayOT] = useState<{ [gamerId: string]: string }>({});
 
   const handleDateChange = (date: string) => {
     setSelectedDate(date);
     setLocalFarmed({});
+    setLocalNormalOT({});
+    setLocalHolidayOT({});
   };
 
   // Ensure only admin or viewer (auditor) can see this
@@ -64,9 +68,36 @@ export default function AttendanceTab() {
     return record?.farmed_millions !== undefined ? String(record.farmed_millions) : '';
   };
 
-  const handleMarkAttendance = async (gamerId: string, status: AttendanceStatus, farmedMillions?: number) => {
+  const getGamerNormalOTForDate = (gamerId: string) => {
+    if (localNormalOT[gamerId] !== undefined) {
+      return localNormalOT[gamerId];
+    }
+    const record = attendance.find(a => a.gamer_id === gamerId && a.date === selectedDate);
+    return record?.normal_overtime_hours !== undefined && record.normal_overtime_hours > 0 ? String(record.normal_overtime_hours) : '';
+  };
+
+  const getGamerHolidayOTForDate = (gamerId: string) => {
+    if (localHolidayOT[gamerId] !== undefined) {
+      return localHolidayOT[gamerId];
+    }
+    const record = attendance.find(a => a.gamer_id === gamerId && a.date === selectedDate);
+    return record?.holiday_overtime_hours !== undefined && record.holiday_overtime_hours > 0 ? String(record.holiday_overtime_hours) : '';
+  };
+
+  const handleMarkAttendance = async (
+    gamerId: string, 
+    status: AttendanceStatus, 
+    farmedMillions?: number,
+    normalOT?: number,
+    holidayOT?: number
+  ) => {
     setSaveStatus(prev => ({ ...prev, [gamerId]: 'saving' }));
-    const res = await saveAttendance(gamerId, selectedDate, status, farmedMillions);
+    const currentRecord = attendance.find(a => a.gamer_id === gamerId && a.date === selectedDate);
+    const finalFarmed = farmedMillions !== undefined ? farmedMillions : (currentRecord?.farmed_millions || 0);
+    const finalNormal = normalOT !== undefined ? normalOT : (currentRecord?.normal_overtime_hours || 0);
+    const finalHoliday = holidayOT !== undefined ? holidayOT : (currentRecord?.holiday_overtime_hours || 0);
+
+    const res = await saveAttendance(gamerId, selectedDate, status, finalFarmed, finalNormal, finalHoliday);
     if (res.success) {
       setSaveStatus(prev => ({ ...prev, [gamerId]: 'success' }));
       setTimeout(() => {
@@ -307,8 +338,9 @@ export default function AttendanceTab() {
                   <th className="py-3 px-3">Operator Dossier</th>
                   <th className="py-3 px-3">Clearance ID</th>
                   <th className="py-3 px-3">Role / Level</th>
-                  <th className="py-3 px-3 w-40">Farmed Today (Millions)</th>
-                  <th className="py-3 px-3 text-center w-80">Mark Attendance Status</th>
+                  <th className="py-3 px-3 w-32">Farmed Today (M)</th>
+                  <th className="py-3 px-3 w-48">Overtime Hours</th>
+                  <th className="py-3 px-3 text-center w-72">Mark Attendance Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-cyber-border/20">
@@ -375,13 +407,83 @@ export default function AttendanceTab() {
                                 }
                               }}
                               placeholder="0"
-                              className="w-24 bg-slate-950 border border-cyber-border/40 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-cyber-cyan text-right text-xs disabled:opacity-60 disabled:cursor-not-allowed"
+                              className="w-20 bg-slate-950 border border-cyber-border/40 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-cyber-cyan text-right text-xs disabled:opacity-60 disabled:cursor-not-allowed"
                             />
                             <span className="text-[10px] text-slate-500 font-bold uppercase">M</span>
                           </div>
                         ) : (
                           <span className="text-slate-600 font-mono text-[10px] uppercase">N/A</span>
                         )}
+                      </td>
+
+                      {/* Overtime (Normal 1.5x & Holiday 2.0x) */}
+                      <td className="py-3.5 px-3">
+                        <div className="flex items-center gap-2 font-mono text-[10px]">
+                          <div className="flex items-center gap-1">
+                            <span className="text-slate-500 font-bold" title="Normal Approved Overtime (1.5x rate: K5.77/hr)">1.5x:</span>
+                            <input 
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              disabled={role === 'viewer'}
+                              value={getGamerNormalOTForDate(gamer.id)}
+                              onChange={(e) => {
+                                if (role === 'viewer') return;
+                                setLocalNormalOT(prev => ({ ...prev, [gamer.id]: e.target.value }));
+                              }}
+                              onBlur={() => {
+                                if (role === 'viewer') return;
+                                const valStr = localNormalOT[gamer.id];
+                                if (valStr === undefined) return;
+                                const val = parseFloat(valStr) || 0;
+                                handleMarkAttendance(gamer.id, currentStatus || 'present_on_time', undefined, val, undefined);
+                                setLocalNormalOT(prev => {
+                                  const next = { ...prev };
+                                  delete next[gamer.id];
+                                  return next;
+                                });
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') e.currentTarget.blur();
+                              }}
+                              placeholder="0"
+                              className="w-12 bg-slate-950 border border-cyber-border/40 rounded px-1.5 py-1 text-slate-200 focus:outline-none focus:border-cyber-cyan text-center text-xs"
+                            />
+                            <span className="text-[9px] text-slate-500">h</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-cyber-amber font-bold" title="Rest Day / Holiday Overtime (2.0x rate: K7.69/hr)">2.0x:</span>
+                            <input 
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              disabled={role === 'viewer'}
+                              value={getGamerHolidayOTForDate(gamer.id)}
+                              onChange={(e) => {
+                                if (role === 'viewer') return;
+                                setLocalHolidayOT(prev => ({ ...prev, [gamer.id]: e.target.value }));
+                              }}
+                              onBlur={() => {
+                                if (role === 'viewer') return;
+                                const valStr = localHolidayOT[gamer.id];
+                                if (valStr === undefined) return;
+                                const val = parseFloat(valStr) || 0;
+                                handleMarkAttendance(gamer.id, currentStatus || 'present_on_time', undefined, undefined, val);
+                                setLocalHolidayOT(prev => {
+                                  const next = { ...prev };
+                                  delete next[gamer.id];
+                                  return next;
+                                });
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') e.currentTarget.blur();
+                              }}
+                              placeholder="0"
+                              className="w-12 bg-slate-950 border border-cyber-border/40 rounded px-1.5 py-1 text-slate-200 focus:outline-none focus:border-cyber-cyan text-center text-xs"
+                            />
+                            <span className="text-[9px] text-slate-500">h</span>
+                          </div>
+                        </div>
                       </td>
                       <td className="py-3.5 px-3">
                         {role === 'admin' ? (

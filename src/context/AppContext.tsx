@@ -76,7 +76,14 @@ interface AppContextType {
   ) => Promise<{ success: boolean; error?: string }>;
   deleteOrder: (id: string) => Promise<{ success: boolean; error?: string }>;
   updateOrderStatus: (id: string, status: OrderStatus) => Promise<{ success: boolean; error?: string }>;
-  saveAttendance: (gamerId: string, date: string, status: AttendanceStatus, farmedMillions?: number) => Promise<{ success: boolean; error?: string }>;
+  saveAttendance: (
+    gamerId: string, 
+    date: string, 
+    status: AttendanceStatus, 
+    farmedMillions?: number,
+    normalOvertimeHours?: number,
+    holidayOvertimeHours?: number
+  ) => Promise<{ success: boolean; error?: string }>;
   calculatePayroll: (gamerId: string, cycleLabel: string) => PayrollSummary;
   getDailyGamerEarnings: (cycleLabel: string, targetGamerId?: string) => DailyGamerEarnings[];
   importBackupData: (gamers: Gamer[], orders: Order[], attendance?: AttendanceRecord[]) => Promise<{ success: boolean; error?: string }>;
@@ -1002,7 +1009,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const saveAttendance = async (gamerId: string, date: string, status: AttendanceStatus, farmedMillions?: number) => {
+  const saveAttendance = async (
+    gamerId: string, 
+    date: string, 
+    status: AttendanceStatus, 
+    farmedMillions?: number,
+    normalOvertimeHours?: number,
+    holidayOvertimeHours?: number
+  ) => {
     const existingRecord = attendance.find(a => a.gamer_id === gamerId && a.date === date);
     const targetGamer = gamers.find(g => g.id === gamerId);
     const currentTeamLeaderId = existingRecord?.team_leader_id !== undefined 
@@ -1011,6 +1025,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const finalStatus = status;
     const finalFarmedMillions = farmedMillions !== undefined ? farmedMillions : (existingRecord?.farmed_millions || 0);
+    const finalNormalOT = normalOvertimeHours !== undefined ? normalOvertimeHours : (existingRecord?.normal_overtime_hours || 0);
+    const finalHolidayOT = holidayOvertimeHours !== undefined ? holidayOvertimeHours : (existingRecord?.holiday_overtime_hours || 0);
 
     const newRecord: AttendanceRecord = {
       id: existingRecord?.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11)),
@@ -1018,6 +1034,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       date,
       status: finalStatus,
       farmed_millions: finalFarmedMillions,
+      normal_overtime_hours: finalNormalOT,
+      holiday_overtime_hours: finalHolidayOT,
       team_leader_id: currentTeamLeaderId,
       created_at: existingRecord?.created_at || new Date().toISOString(),
     };
@@ -1029,6 +1047,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           date,
           status: finalStatus,
           farmed_millions: finalFarmedMillions,
+          normal_overtime_hours: finalNormalOT,
+          holiday_overtime_hours: finalHolidayOT,
           created_at: new Date().toISOString()
         };
         if (currentTeamLeaderId) {
@@ -1040,12 +1060,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
           .upsert(payload, { onConflict: 'gamer_id,date' })
           .select();
 
-        if (error && (error.message?.includes('team_leader_id') || error.message?.includes('schema cache'))) {
-          // Graceful fallback retry if team_leader_id column has not been added to Supabase table yet
-          delete payload.team_leader_id;
+        if (error && (error.message?.includes('overtime') || error.message?.includes('team_leader_id') || error.message?.includes('schema cache'))) {
+          // Graceful fallback retry if overtime/team_leader_id columns are not yet in Supabase table
+          const fallbackPayload: any = {
+            gamer_id: gamerId,
+            date,
+            status: finalStatus,
+            farmed_millions: finalFarmedMillions,
+            created_at: new Date().toISOString()
+          };
           const retryRes = await supabase
             .from('attendance')
-            .upsert(payload, { onConflict: 'gamer_id,date' })
+            .upsert(fallbackPayload, { onConflict: 'gamer_id,date' })
             .select();
           data = retryRes.data;
           error = retryRes.error;
@@ -1055,7 +1081,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         
         setAttendance((prev) => {
           const filtered = prev.filter((a) => !(a.gamer_id === gamerId && a.date === date));
-          const upserted = data && data[0] ? data[0] as AttendanceRecord : newRecord;
+          const upserted = data && data[0] ? { ...newRecord, ...data[0] } : newRecord;
           const updated = [upserted, ...filtered];
           return updated;
         });
@@ -1276,6 +1302,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // G. Additional Performance Award (Manual bonus adjustment)
       const additionalPerformanceAward = gamer.bonus_adjustment || 0;
 
+      // H. Overtime Pay: Base K800 / 208 hrs ≈ K3.85 / hr
+      const normalOvertimeHours = cycleAttendance.reduce((sum, a) => sum + Number(a.normal_overtime_hours || 0), 0);
+      const holidayOvertimeHours = cycleAttendance.reduce((sum, a) => sum + Number(a.holiday_overtime_hours || 0), 0);
+      const hourlyRate = 800 / 208; // ~3.846 K/hr
+      const normalOvertimePay = normalOvertimeHours * hourlyRate * 1.5;
+      const holidayOvertimePay = holidayOvertimeHours * hourlyRate * 2.0;
+      const overtimePay = Number((normalOvertimePay + holidayOvertimePay).toFixed(2));
+
       // Base Pay Earned: Responsibility + Attendance + Transport
       const basePayEarned = Number((responsibilitySalary + attendanceSalary + transportAllowance).toFixed(2));
       const deductions = Math.max(0, 800 - responsibilitySalary) + Math.max(0, 200 - attendanceSalary);
@@ -1287,7 +1321,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         excessOrderIncentive + 
         teamLeaderManagementAllowance + 
         teamIncentive + 
-        additionalPerformanceAward
+        additionalPerformanceAward +
+        overtimePay
       ).toFixed(2));
 
       return {
@@ -1318,7 +1353,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         teamIncentive,
         teamLeaderManagementAllowance,
         additionalPerformanceAward,
-        teamCompletionRate
+        teamCompletionRate,
+        normalOvertimeHours,
+        holidayOvertimeHours,
+        overtimePay
       };
     }
 
@@ -1504,10 +1542,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        const totalDailyEarned = Number((basePayEarned + orderBonus + teamVolumeBonus).toFixed(2));
+        const normalOT = Number(att?.normal_overtime_hours || 0);
+        const holidayOT = Number(att?.holiday_overtime_hours || 0);
+        const dailyOTPay = Number(((normalOT * (800 / 208) * 1.5) + (holidayOT * (800 / 208) * 2.0)).toFixed(2));
 
-        // Include if gamer had attendance log or completed order or team volume bonus > 0
-        if (att || gamerCompletedOrders.length > 0 || teamVolumeBonus > 0) {
+        const totalDailyEarned = Number((basePayEarned + orderBonus + teamVolumeBonus + dailyOTPay).toFixed(2));
+
+        // Include if gamer had attendance log or completed order or team volume bonus > 0 or overtime
+        if (att || gamerCompletedOrders.length > 0 || teamVolumeBonus > 0 || dailyOTPay > 0) {
           result.push({
             date: dateStr,
             gamerId: gamer.id,
@@ -1521,7 +1563,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
             orderBonus,
             teamVolumeBonus,
             totalDailyEarned,
-            completedOrdersCount: gamerCompletedOrders.length
+            completedOrdersCount: gamerCompletedOrders.length,
+            normalOvertimeHours: normalOT,
+            holidayOvertimeHours: holidayOT,
+            overtimePay: dailyOTPay
           });
         }
       });
