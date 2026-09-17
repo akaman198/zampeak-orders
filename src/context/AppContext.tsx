@@ -174,7 +174,8 @@ export const getAttendancePeriodLabel = (dateStr: string) => {
   let month = date.getMonth(); // 0-indexed
   const day = date.getDate();
 
-  if (day >= 16) {
+  // Cycle runs from 5th to 5th of each month (days > 5 roll into the next month's 5th cycle)
+  if (day > 5) {
     month += 1;
     if (month > 11) {
       month = 0;
@@ -186,31 +187,10 @@ export const getAttendancePeriodLabel = (dateStr: string) => {
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
-  return `${monthNames[month]} 15, ${year}`;
+  return `${monthNames[month]} 5, ${year}`;
 };
 
-export const getOrderPeriodLabel = (dateStr: string) => {
-  if (!dateStr) return '';
-  const normalizedStr = dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`;
-  const date = new Date(normalizedStr);
-  let year = date.getFullYear();
-  let month = date.getMonth(); // 0-indexed
-  const day = date.getDate();
-
-  if (day >= 15) {
-    month += 1;
-    if (month > 11) {
-      month = 0;
-      year += 1;
-    }
-  }
-
-  const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-  return `${monthNames[month]} 15, ${year}`;
-};
+export const getOrderPeriodLabel = getAttendancePeriodLabel;
 
 export const getPayPeriodLabel = getAttendancePeriodLabel;
 
@@ -220,13 +200,13 @@ export const isNewSalaryStructureCycle = (cycleLabel: string): boolean => {
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
-  const parts = cycleLabel.replace(',', '').split(' '); // e.g. ["September", "15", "2026"]
+  const parts = cycleLabel.replace(',', '').split(' '); // e.g. ["September", "5", "2026"] or ["October", "5", "2026"]
   if (parts.length < 3) return false;
   const monthIndex = monthNames.indexOf(parts[0]);
-  const day = parseInt(parts[1]) || 15;
+  const day = parseInt(parts[1]) || 5;
   const year = parseInt(parts[2]) || 2026;
   const cycleEndDate = new Date(year, monthIndex, day);
-  // Cutoff is August 15, 2026. Cycles ending AFTER August 15, 2026 (starting from 16th August 2026) use the new salary structure.
+  // Cutoff is August 15, 2026. Cycles ending AFTER August 15, 2026 use the new salary structure.
   const cutoffDate = new Date(2026, 7, 15);
   return cycleEndDate.getTime() > cutoffDate.getTime();
 };
@@ -234,12 +214,13 @@ export const isNewSalaryStructureCycle = (cycleLabel: string): boolean => {
 /**
  * Calculates the valid completed order count (in 10M units):
  * - For single runner:
- *   - Orders <= 100M: Credited when status is 'Completed' (size_millions / 10).
+ *   - Orders <= 100M: Credited when status is 'Completed' (size_millions / 10). Only counts completed from Sept 14th onwards.
  *   - Orders > 100M: Credited each time 100M milestone is hit (Math.floor(progress / 100) * 10). Full (size / 10) upon Completed.
  * - For dual / shared runner orders (order.co_gamer_id is set):
  *   - Volume and milestones are shared 50/50:
  *   - When whole order is 'Completed': each runner gets half the volume in 10M units (e.g. 600M -> 300M each = 30 orders each).
  *   - When running & >100M: each 100M milestone is shared (50M each = 5 orders each).
+ * - Target Rule: Only count completed orders from September 14, 2026 onwards for 26 target (reset others to 0, leaving milestone progress intact).
  */
 export const calculateOrderUnits = (order: Order, forGamerId?: string): number => {
   const size = Number(order.size_millions || 0);
@@ -249,6 +230,15 @@ export const calculateOrderUnits = (order: Order, forGamerId?: string): number =
 
   if (forGamerId) {
     if (order.gamer_id !== forGamerId && order.co_gamer_id !== forGamerId) {
+      return 0;
+    }
+  }
+
+  // Target Rule: For completed orders, only count completed ones from the 14th of September 2026 onwards.
+  // Prior completed orders reset back to 0 for target unit counting purposes.
+  if (order.status === 'Completed') {
+    const compDate = (order.completed_date || order.start_date || order.created_at || '').slice(0, 10);
+    if (!compDate || compDate < '2026-09-14') {
       return 0;
     }
   }
@@ -1221,6 +1211,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const gamerOrdersInCycle = orders.filter((o) => {
         if (o.gamer_id !== gamerId && o.co_gamer_id !== gamerId) return false;
         if (o.status === 'Completed') {
+          const compDate = (o.completed_date || o.start_date || o.created_at || '').slice(0, 10);
+          if (!compDate || compDate < '2026-09-14') {
+            return false;
+          }
           return getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel;
         }
         // Active orders (Running, Paused) with milestone progress or active start date
@@ -1341,6 +1335,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
             const mOrders = orders.filter((o) => {
               if (o.gamer_id !== m.id && o.co_gamer_id !== m.id) return false;
               if (o.status === 'Completed') {
+                const compDate = (o.completed_date || o.start_date || o.created_at || '').slice(0, 10);
+                if (!compDate || compDate < '2026-09-14') {
+                  return false;
+                }
                 return getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel;
               }
               if (o.size_millions > 100 && (o.progress_millions || 0) >= 100) {

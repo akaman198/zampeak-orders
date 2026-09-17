@@ -38,7 +38,7 @@ export default function ReportsTab() {
     const now = new Date();
     cyclesSet.add(getPayPeriodLabel(now.toISOString()));
     
-    const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 15);
+    const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 5);
     cyclesSet.add(getPayPeriodLabel(nextMonthDate.toISOString()));
 
     // Add cycles from completed orders
@@ -59,10 +59,10 @@ export default function ReportsTab() {
     ];
     return Array.from(cyclesSet).sort((a, b) => {
       const parseDate = (label: string) => {
-        const parts = label.replace(',', '').split(' '); // e.g. ["September", "15", "2026"]
+        const parts = label.replace(',', '').split(' '); // e.g. ["September", "5", "2026"]
         const m = monthNames.indexOf(parts[0]);
-        const d = parseInt(parts[1]);
-        const y = parseInt(parts[2]);
+        const d = parseInt(parts[1]) || 5;
+        const y = parseInt(parts[2]) || 2026;
         return new Date(y, m, d).getTime();
       };
       return parseDate(b) - parseDate(a); // descending order
@@ -77,7 +77,8 @@ export default function ReportsTab() {
     ];
     const parts = cycleLabel.replace(',', '').split(' ');
     const monthIndex = monthNames.indexOf(parts[0]);
-    const year = parseInt(parts[2]);
+    const day = parseInt(parts[1]) || 5;
+    const year = parseInt(parts[2]) || 2026;
 
     let prevMonthIndex = monthIndex - 1;
     let prevYear = year;
@@ -86,7 +87,11 @@ export default function ReportsTab() {
       prevYear -= 1;
     }
 
-    return `Cycle period: ${monthNames[prevMonthIndex]} 16, ${prevYear} to ${parts[0]} 15, ${year}`;
+    if (day === 15) {
+      return `Cycle period: ${monthNames[prevMonthIndex]} 16, ${prevYear} to ${parts[0]} 15, ${year}`;
+    }
+
+    return `Cycle period: ${monthNames[prevMonthIndex]} 5, ${prevYear} to ${parts[0]} 5, ${year}`;
   };
 
   const availableCycles = getAvailablePayCycles();
