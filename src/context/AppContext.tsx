@@ -287,14 +287,9 @@ export const isNewSalaryStructureCycle = (cycleLabel: string): boolean => {
 
 /**
  * Calculates the valid completed order count (in 10M units):
- * - For single runner:
- *   - Orders <= 100M: Credited when status is 'Completed' (size_millions / 10). Only counts completed from Sept 14th onwards.
- *   - Orders > 100M: Credited each time 100M milestone is hit (Math.floor(progress / 100) * 10). Full (size / 10) upon Completed.
- * - For dual / shared runner orders (order.co_gamer_id is set):
- *   - Volume and milestones are shared 50/50:
- *   - When whole order is 'Completed': each runner gets half the volume in 10M units (e.g. 600M -> 300M each = 30 orders each).
- *   - When running & >100M: each 100M milestone is shared (50M each = 5 orders each).
- * - Target Rule: Only count completed orders from September 14, 2026 onwards for 26 target (reset others to 0, leaving milestone progress intact).
+ * - Target Rule: For Orders (26 Target), only count completed orders from the 14th of September 2026 onwards.
+ * - Non-completed orders (Running, Paused) or orders completed prior to Sept 14th return 0 for target unit counting.
+ * - Milestone targets (size_millions) and progress (progress_millions) on the orders remain untouched.
  */
 export const calculateOrderUnits = (order: Order, forGamerId?: string): number => {
   const size = Number(order.size_millions || 0);
@@ -308,51 +303,29 @@ export const calculateOrderUnits = (order: Order, forGamerId?: string): number =
     }
   }
 
-  // Target Rule: For completed orders, only count completed ones from the 14th of September 2026 onwards.
-  // Prior completed orders reset back to 0 for target unit counting purposes.
-  if (order.status === 'Completed') {
-    const compDate = (order.completed_date || order.start_date || order.created_at || '').slice(0, 10);
-    if (!compDate || compDate < '2026-09-14') {
-      return 0;
-    }
+  // Only count orders that have been Completed
+  if (order.status !== 'Completed') {
+    return 0;
   }
 
-  const progress = Number(order.progress_millions || 0);
+  const compDate = (order.completed_date || order.start_date || order.created_at || '').slice(0, 10);
+  if (!compDate || compDate < '2026-09-14') {
+    return 0;
+  }
 
   if (isShared) {
     // If specific runner requested, calculate their 50% share
     if (forGamerId) {
       const runnerShareVolume = size / 2;
-      if (order.status === 'Completed') {
-        return Math.floor(runnerShareVolume / 10);
-      }
-      if (progress >= 100) {
-        const hundredCount = Math.floor(progress / 100);
-        return hundredCount * 5; // 100M total milestone = 50M each = 5 orders each
-      }
-      return 0;
+      return Math.floor(runnerShareVolume / 10);
     } else {
       // Total combined order units
-      if (order.status === 'Completed') {
-        return Math.floor(size / 10);
-      }
-      if (progress >= 100) {
-        const hundredCount = Math.floor(progress / 100);
-        return hundredCount * 10;
-      }
-      return 0;
+      return Math.floor(size / 10);
     }
   }
 
   // Single runner
-  if (order.status === 'Completed') {
-    return Math.floor(size / 10);
-  }
-  if (progress >= 100) {
-    const hundredCount = Math.floor(progress / 100);
-    return hundredCount * 10;
-  }
-  return 0;
+  return Math.floor(size / 10);
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -463,6 +436,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [gamers, user]);
 
+  const applySept14ResetMigration = (rawOrders: Order[]): Order[] => {
+    const migrationDone = safeLocalStorage.getItem('zampeak_orders_reset_sept14_v3');
+    if (migrationDone) {
+      return rawOrders;
+    }
+
+    // Reset existing completed orders so their completed_date is '2026-09-13' (belonging to previous cycle)
+    // while keeping their milestone target and progress intact
+    const updated = rawOrders.map(o => {
+      if (o.status === 'Completed') {
+        return {
+          ...o,
+          completed_date: '2026-09-13'
+        };
+      }
+      return o;
+    });
+
+    safeLocalStorage.setItem('zampeak_orders', JSON.stringify(updated));
+    safeLocalStorage.setItem('zampeak_orders_reset_sept14_v3', 'true');
+
+    if (!isDemo && isSupabaseConfigured && supabase) {
+      const client = supabase;
+      rawOrders.filter(o => o.status === 'Completed').forEach(async (o) => {
+        try {
+          await client.from('orders').update({ completed_date: '2026-09-13' }).eq('id', o.id);
+        } catch (e) {}
+      });
+    }
+
+    return updated;
+  };
+
   const loadData = async () => {
     setLoading(true);
     if (!isDemo && isSupabaseConfigured && supabase) {
@@ -506,10 +512,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
             };
           });
 
+          const finalOrders = applySept14ResetMigration(mergedOrders);
+
           setGamers(gamersData || []);
-          setOrders(mergedOrders);
+          setOrders(finalOrders);
           setAttendance(attendanceData || []);
-          safeLocalStorage.setItem('zampeak_orders', JSON.stringify(mergedOrders));
+          safeLocalStorage.setItem('zampeak_orders', JSON.stringify(finalOrders));
         }
       } catch (err) {
         console.error('Failed to load from Supabase, falling back to local storage:', err);
@@ -528,8 +536,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const savedAttendance = safeLocalStorage.getItem('zampeak_attendance');
 
     if (savedGamers && savedOrders) {
+      const rawOrders: Order[] = JSON.parse(savedOrders);
+      const finalOrders = applySept14ResetMigration(rawOrders);
       setGamers(JSON.parse(savedGamers));
-      setOrders(JSON.parse(savedOrders));
+      setOrders(finalOrders);
       setAttendance(savedAttendance ? JSON.parse(savedAttendance) : []);
     } else {
       setGamers([]);
@@ -1291,12 +1301,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
           return getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel;
         }
-        // Active orders (Running, Paused) with milestone progress or active start date
-        const progM = Number(o.progress_millions || 0);
-        if (progM >= 100) {
-          return true;
-        }
-        return getOrderPeriodLabel(o.start_date) === cycleLabel;
+        return false;
       });
 
       completedOrdersCount = gamerOrdersInCycle.reduce((sum, o) => sum + calculateOrderUnits(o, gamerId), 0);
@@ -1414,9 +1419,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   return false;
                 }
                 return getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel;
-              }
-              if (o.size_millions > 100 && (o.progress_millions || 0) >= 100) {
-                return getOrderPeriodLabel(o.start_date) === cycleLabel;
               }
               return false;
             });
