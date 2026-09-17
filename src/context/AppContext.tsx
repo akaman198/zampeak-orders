@@ -168,13 +168,43 @@ const getEmailFromInput = (input: string): string => {
 
 export const getAttendancePeriodLabel = (dateStr: string) => {
   if (!dateStr) return '';
+  const dateOnly = dateStr.slice(0, 10);
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  // Transition rule:
+  // Attendance prior to September 15, 2026 was under the legacy 16th-to-15th structure (ending Sep 15, 2026)
+  if (dateOnly < '2026-09-15') {
+    const normalizedStr = dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`;
+    const date = new Date(normalizedStr);
+    let year = date.getFullYear();
+    let month = date.getMonth();
+    const day = date.getDate();
+    if (day >= 16) {
+      month += 1;
+      if (month > 11) {
+        month = 0;
+        year += 1;
+      }
+    }
+    return `${monthNames[month]} 15, ${year}`;
+  }
+
+  // Transition cycle: From Sept 15, 2026 until the next month 5th (Oct 5, 2026)
+  if (dateOnly <= '2026-10-05') {
+    return 'October 5, 2026';
+  }
+
+  // From Oct 6, 2026 onwards: calculated normally, 5th to 5th (days > 5 roll into next month's 5th)
   const normalizedStr = dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`;
   const date = new Date(normalizedStr);
   let year = date.getFullYear();
-  let month = date.getMonth(); // 0-indexed
+  let month = date.getMonth();
   const day = date.getDate();
 
-  // Cycle runs from 5th to 5th of each month (days > 5 roll into the next month's 5th cycle)
   if (day > 5) {
     month += 1;
     if (month > 11) {
@@ -183,14 +213,58 @@ export const getAttendancePeriodLabel = (dateStr: string) => {
     }
   }
 
+  return `${monthNames[month]} 5, ${year}`;
+};
+
+export const getOrderPeriodLabel = (dateStr: string) => {
+  if (!dateStr) return '';
+  const dateOnly = dateStr.slice(0, 10);
+
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
+
+  // Transition rule:
+  // Orders completed prior to September 14, 2026 belonged to the Sep 15, 2026 cycle or prior
+  if (dateOnly < '2026-09-14') {
+    const normalizedStr = dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`;
+    const date = new Date(normalizedStr);
+    let year = date.getFullYear();
+    let month = date.getMonth();
+    const day = date.getDate();
+    if (day >= 15) {
+      month += 1;
+      if (month > 11) {
+        month = 0;
+        year += 1;
+      }
+    }
+    return `${monthNames[month]} 15, ${year}`;
+  }
+
+  // Transition cycle: From Sept 14, 2026 until the next month 5th (Oct 5, 2026)
+  if (dateOnly <= '2026-10-05') {
+    return 'October 5, 2026';
+  }
+
+  // From Oct 6, 2026 onwards: calculated normally, 5th to 5th (days > 5 roll into next month's 5th)
+  const normalizedStr = dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`;
+  const date = new Date(normalizedStr);
+  let year = date.getFullYear();
+  let month = date.getMonth();
+  const day = date.getDate();
+
+  if (day > 5) {
+    month += 1;
+    if (month > 11) {
+      month = 0;
+      year += 1;
+    }
+  }
+
   return `${monthNames[month]} 5, ${year}`;
 };
-
-export const getOrderPeriodLabel = getAttendancePeriodLabel;
 
 export const getPayPeriodLabel = getAttendancePeriodLabel;
 

@@ -101,6 +101,10 @@ export default function DashboardTab({
       return `Orders: ${monthNames[prevMonthIndex]} 15 - ${parts[0]} 14 | Attendance: ${monthNames[prevMonthIndex]} 16 - ${parts[0]} 15, ${year}`;
     }
 
+    if (cycleLabel === 'October 5, 2026') {
+      return `Orders: Sep 14 - Oct 5 | Attendance: Sep 15 - Oct 5, 2026`;
+    }
+
     return `Cycle period: ${monthNames[prevMonthIndex]} 5, ${prevYear} to ${parts[0]} 5, ${year}`;
   };
 

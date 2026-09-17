@@ -91,6 +91,10 @@ export default function ReportsTab() {
       return `Cycle period: ${monthNames[prevMonthIndex]} 16, ${prevYear} to ${parts[0]} 15, ${year}`;
     }
 
+    if (cycleLabel === 'October 5, 2026') {
+      return `Cycle period: Orders (Sep 14) / Attendance (Sep 15) to Oct 5, 2026`;
+    }
+
     return `Cycle period: ${monthNames[prevMonthIndex]} 5, ${prevYear} to ${parts[0]} 5, ${year}`;
   };
 
