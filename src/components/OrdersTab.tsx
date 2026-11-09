@@ -622,9 +622,10 @@ export default function OrdersTab() {
                   <label className="text-slate-400 uppercase tracking-wider">Order Size (Millions)</label>
                   <input 
                     type="number" 
+                    step="any"
+                    min="1"
                     value={sizeMillions || ''}
                     onChange={(e) => setSizeMillions(Number(e.target.value))}
-                    min="1"
                     className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan"
                   />
                 </div>
@@ -692,8 +693,7 @@ export default function OrdersTab() {
                   <input 
                     type="number" 
                     min="0"
-                    max={sizeMillions * 2}
-                    step="5"
+                    step="any"
                     value={progressMillions}
                     onChange={(e) => setProgressMillions(Math.max(0, Number(e.target.value)))}
                     className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyber-cyan"
@@ -913,11 +913,11 @@ export default function OrdersTab() {
                         <div className="flex items-center gap-1.5">
                           <input
                             type="number"
-                            step="0.5"
-                            min="0.1"
+                            step="any"
+                            min="0"
                             value={logVolume}
                             onChange={(e) => setLogVolume(e.target.value)}
-                            placeholder="e.g. 15 or 25.5"
+                            placeholder="e.g. 50 or 25.5"
                             className="w-full bg-slate-950 border border-cyber-border rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-cyber-cyan text-xs"
                           />
                           <span className="text-xs text-slate-400 font-bold">M</span>
