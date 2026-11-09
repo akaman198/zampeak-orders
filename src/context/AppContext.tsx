@@ -193,27 +193,25 @@ export const getAttendancePeriodLabel = (dateStr: string) => {
     return `${monthNames[month]} 15, ${year}`;
   }
 
-  // Transition cycle: From Sept 15, 2026 until the next month 5th (Oct 5, 2026)
-  if (dateOnly <= '2026-10-05') {
-    return 'October 5, 2026';
+  // Transition cycle: From Sept 15, 2026 until the new monthly cycle begins on Oct 1, 2026
+  if (dateOnly < '2026-10-01') {
+    return 'October 1, 2026';
   }
 
-  // From Oct 6, 2026 onwards: calculated normally, 5th to 5th (days > 5 roll into next month's 5th)
-  const normalizedStr = dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`;
-  const date = new Date(normalizedStr);
-  let year = date.getFullYear();
-  let month = date.getMonth();
-  const day = date.getDate();
+  // From Oct 1, 2026 onwards: Cycle period is from the 1st of each month to the 1st of the next month
+  // E.g., Oct 1 - Oct 31 rolls into November 1, 2026 (target pay date)
+  // E.g., Nov 1 - Nov 30 rolls into December 1, 2026
+  const parts = dateOnly.split('-');
+  let year = parseInt(parts[0], 10) || 2026;
+  let month = (parseInt(parts[1], 10) || 1) - 1; // 0-indexed month
 
-  if (day > 5) {
-    month += 1;
-    if (month > 11) {
-      month = 0;
-      year += 1;
-    }
+  month += 1;
+  if (month > 11) {
+    month = 0;
+    year += 1;
   }
 
-  return `${monthNames[month]} 5, ${year}`;
+  return `${monthNames[month]} 1, ${year}`;
 };
 
 export const getOrderPeriodLabel = (dateStr: string) => {
@@ -243,27 +241,25 @@ export const getOrderPeriodLabel = (dateStr: string) => {
     return `${monthNames[month]} 15, ${year}`;
   }
 
-  // Transition cycle: From Sept 14, 2026 until the next month 5th (Oct 5, 2026)
-  if (dateOnly <= '2026-10-05') {
-    return 'October 5, 2026';
+  // Transition cycle: From Sept 14, 2026 until the new monthly cycle begins on Oct 1, 2026
+  if (dateOnly < '2026-10-01') {
+    return 'October 1, 2026';
   }
 
-  // From Oct 6, 2026 onwards: calculated normally, 5th to 5th (days > 5 roll into next month's 5th)
-  const normalizedStr = dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`;
-  const date = new Date(normalizedStr);
-  let year = date.getFullYear();
-  let month = date.getMonth();
-  const day = date.getDate();
+  // From Oct 1, 2026 onwards: Cycle period is from the 1st of each month to the 1st of the next month
+  // E.g., Oct 1 - Oct 31 rolls into November 1, 2026 (target pay date)
+  // E.g., Nov 1 - Nov 30 rolls into December 1, 2026
+  const parts = dateOnly.split('-');
+  let year = parseInt(parts[0], 10) || 2026;
+  let month = (parseInt(parts[1], 10) || 1) - 1;
 
-  if (day > 5) {
-    month += 1;
-    if (month > 11) {
-      month = 0;
-      year += 1;
-    }
+  month += 1;
+  if (month > 11) {
+    month = 0;
+    year += 1;
   }
 
-  return `${monthNames[month]} 5, ${year}`;
+  return `${monthNames[month]} 1, ${year}`;
 };
 
 export const getPayPeriodLabel = getAttendancePeriodLabel;

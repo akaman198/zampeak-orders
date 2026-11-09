@@ -165,6 +165,14 @@ export default function OrdersTab() {
     const finalCoGamer = isDualRunner ? coGamerId : null;
 
     if (isEditing) {
+      const numberExists = orders.some(
+        o => o.id !== isEditing.id && o.order_number.trim().toLowerCase() === orderNumber.trim().toLowerCase()
+      );
+      if (numberExists) {
+        setFormError(`Order Number ${orderNumber.trim()} is already assigned to another order.`);
+        return;
+      }
+
       const res = await updateOrder(
         isEditing.id,
         orderNumber.trim(),
@@ -363,7 +371,7 @@ export default function OrdersTab() {
             <div className="hud-grid"></div>
             
             <h3 className="font-mono font-bold text-sm text-cyber-cyan uppercase tracking-widest border-b border-cyber-cyan/20 pb-3 mb-5 flex justify-between items-center">
-              <span>{isEditing ? `Modify Deployment: ${orderNumber}` : 'Deploy New Mission'}</span>
+              <span>{isEditing ? `Modify Deployment: ${isEditing.order_number}` : 'Deploy New Mission'}</span>
               <button onClick={() => setIsFormOpen(false)} className="text-slate-400 hover:text-slate-200 cursor-pointer">
                 <X size={16} />
               </button>
@@ -385,8 +393,7 @@ export default function OrdersTab() {
                     value={orderNumber}
                     onChange={(e) => setOrderNumber(e.target.value)}
                     placeholder="e.g. ZP-2024"
-                    disabled={!!isEditing}
-                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan disabled:opacity-50"
+                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan"
                   />
                 </div>
 
@@ -672,7 +679,18 @@ export default function OrdersTab() {
                       return (
                         <tr key={order.id} className="hover:bg-slate-900/30 transition-colors">
                           <td className="p-3 text-cyber-cyan font-bold">
-                            {order.order_number}
+                            {isManager ? (
+                              <button
+                                onClick={() => openEditOrderForm(order)}
+                                title="Click to edit Order parameters and Order Number"
+                                className="text-left hover:text-white hover:underline transition-all inline-flex items-center gap-1 group cursor-pointer"
+                              >
+                                <span>{order.order_number}</span>
+                                <Edit3 size={10} className="opacity-0 group-hover:opacity-100 text-cyber-cyan transition-opacity" />
+                              </button>
+                            ) : (
+                              <span>{order.order_number}</span>
+                            )}
                             {coGamer && (
                               <span className="text-[8px] text-cyber-green bg-cyber-green/10 border border-cyber-green/30 px-1 py-0.5 rounded ml-1.5 uppercase font-mono inline-block">
                                 50/50 Dual

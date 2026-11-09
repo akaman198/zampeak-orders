@@ -42,12 +42,12 @@ export default function DashboardTab({
   const getAvailablePayCycles = () => {
     const cyclesSet = new Set<string>();
     
-    // Always include current month and next month's cycles as upcoming options
+    // Always include previous, current and next month's cycles as options
     const now = new Date();
+    const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 15);
+    const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 15);
+    cyclesSet.add(getPayPeriodLabel(prevMonthDate.toISOString()));
     cyclesSet.add(getPayPeriodLabel(now.toISOString()));
-    
-    // Add next month cycle
-    const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 5);
     cyclesSet.add(getPayPeriodLabel(nextMonthDate.toISOString()));
 
     // Add cycles from completed orders
@@ -68,9 +68,9 @@ export default function DashboardTab({
     ];
     return Array.from(cyclesSet).sort((a, b) => {
       const parseDate = (label: string) => {
-        const parts = label.replace(',', '').split(' '); // e.g. ["September", "5", "2026"]
+        const parts = label.replace(',', '').split(' '); // e.g. ["November", "1", "2026"]
         const m = monthNames.indexOf(parts[0]);
-        const d = parseInt(parts[1]) || 5;
+        const d = parseInt(parts[1]) || 1;
         const y = parseInt(parts[2]) || 2026;
         return new Date(y, m, d).getTime();
       };
@@ -84,9 +84,9 @@ export default function DashboardTab({
       'January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December'
     ];
-    const parts = cycleLabel.replace(',', '').split(' '); // e.g. ["September", "5", "2026"]
+    const parts = cycleLabel.replace(',', '').split(' '); // e.g. ["November", "1", "2026"]
     const monthIndex = monthNames.indexOf(parts[0]);
-    const day = parseInt(parts[1]) || 5;
+    const day = parseInt(parts[1]) || 1;
     const year = parseInt(parts[2]) || 2026;
 
     // Prev month index
@@ -101,11 +101,19 @@ export default function DashboardTab({
       return `Orders: ${monthNames[prevMonthIndex]} 15 - ${parts[0]} 14 | Attendance: ${monthNames[prevMonthIndex]} 16 - ${parts[0]} 15, ${year}`;
     }
 
+    if (cycleLabel === 'October 1, 2026') {
+      return `Orders: Sep 14 - Sep 30 | Attendance: Sep 15 - Sep 30, 2026`;
+    }
+
     if (cycleLabel === 'October 5, 2026') {
       return `Orders: Sep 14 - Oct 5 | Attendance: Sep 15 - Oct 5, 2026`;
     }
 
-    return `Cycle period: ${monthNames[prevMonthIndex]} 5, ${prevYear} to ${parts[0]} 5, ${year}`;
+    if (day === 1) {
+      return `Cycle period: ${monthNames[prevMonthIndex]} 1, ${prevYear} to ${parts[0]} 1, ${year}`;
+    }
+
+    return `Cycle period: ${monthNames[prevMonthIndex]} ${day}, ${prevYear} to ${parts[0]} ${day}, ${year}`;
   };
 
   const todayStr = new Date().toISOString().slice(0, 10);
