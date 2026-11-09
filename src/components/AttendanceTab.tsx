@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useApp, getPayPeriodLabel } from '../context/AppContext';
-import { AttendanceStatus } from '../types';
+import { AttendanceStatus, ShiftType } from '../types';
 import { 
   Calendar, 
   Check, 
@@ -11,11 +11,15 @@ import {
   Users, 
   ShieldAlert,
   Search,
-  CheckCircle2
+  CheckCircle2,
+  Sun,
+  Moon,
+  Zap,
+  Sparkles
 } from 'lucide-react';
 
 export default function AttendanceTab() {
-  const { gamers, attendance, saveAttendance, role } = useApp();
+  const { gamers, attendance, orders, saveAttendance, role } = useApp();
   
   // Format today's date in local YYYY-MM-DD
   const getTodayDateString = () => {
@@ -29,6 +33,7 @@ export default function AttendanceTab() {
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString());
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'gamer' | 'team_leader' | 'technical_manager'>('all');
+  const [shiftFilter, setShiftFilter] = useState<'all' | 'day' | 'night'>('all');
   const [saveStatus, setSaveStatus] = useState<{ [gamerId: string]: 'saving' | 'success' | 'error' }>({});
   const [localFarmed, setLocalFarmed] = useState<{ [gamerId: string]: string }>({});
   const [localNormalOT, setLocalNormalOT] = useState<{ [gamerId: string]: string }>({});
@@ -60,6 +65,12 @@ export default function AttendanceTab() {
     return record?.status || null; // null means unmarked
   };
 
+  // Helper to get attendance record shift for a gamer on the selected date
+  const getGamerShiftForDate = (gamerId: string): ShiftType => {
+    const record = attendance.find(a => a.gamer_id === gamerId && a.date === selectedDate);
+    return record?.shift || 'day';
+  };
+
   const getGamerFarmedForDate = (gamerId: string) => {
     if (localFarmed[gamerId] !== undefined) {
       return localFarmed[gamerId];
@@ -84,20 +95,48 @@ export default function AttendanceTab() {
     return record?.holiday_overtime_hours !== undefined && record.holiday_overtime_hours > 0 ? String(record.holiday_overtime_hours) : '';
   };
 
+  // Helper to compute volume logged on orders by this gamer on this specific date
+  const getGamerLoggedOrderVolumeForDate = (gamerId: string) => {
+    let total = 0;
+    let day = 0;
+    let night = 0;
+    let home = 0;
+    let logsCount = 0;
+
+    orders.forEach(order => {
+      if (order.daily_progress) {
+        order.daily_progress.forEach(log => {
+          if (log.gamer_id === gamerId && log.date === selectedDate) {
+            const vol = Number(log.volume_millions || 0);
+            total += vol;
+            logsCount += 1;
+            if (log.shift === 'day') day += vol;
+            else if (log.shift === 'night') night += vol;
+            else if (log.shift === 'home') home += vol;
+          }
+        });
+      }
+    });
+
+    return { total, day, night, home, logsCount };
+  };
+
   const handleMarkAttendance = async (
     gamerId: string, 
     status: AttendanceStatus, 
     farmedMillions?: number,
     normalOT?: number,
-    holidayOT?: number
+    holidayOT?: number,
+    shift?: ShiftType
   ) => {
     setSaveStatus(prev => ({ ...prev, [gamerId]: 'saving' }));
     const currentRecord = attendance.find(a => a.gamer_id === gamerId && a.date === selectedDate);
     const finalFarmed = farmedMillions !== undefined ? farmedMillions : (currentRecord?.farmed_millions || 0);
     const finalNormal = normalOT !== undefined ? normalOT : (currentRecord?.normal_overtime_hours || 0);
     const finalHoliday = holidayOT !== undefined ? holidayOT : (currentRecord?.holiday_overtime_hours || 0);
+    const finalShift = shift !== undefined ? shift : (currentRecord?.shift || 'day');
 
-    const res = await saveAttendance(gamerId, selectedDate, status, finalFarmed, finalNormal, finalHoliday);
+    const res = await saveAttendance(gamerId, selectedDate, status, finalFarmed, finalNormal, finalHoliday, finalShift);
     if (res.success) {
       setSaveStatus(prev => ({ ...prev, [gamerId]: 'success' }));
       setTimeout(() => {
@@ -111,6 +150,21 @@ export default function AttendanceTab() {
       setSaveStatus(prev => ({ ...prev, [gamerId]: 'error' }));
       alert(`Error saving attendance: ${res.error}`);
     }
+  };
+
+  // Toggle shift for an operator on this date
+  const handleToggleShift = async (gamerId: string) => {
+    const currentShift = getGamerShiftForDate(gamerId);
+    const nextShift: ShiftType = currentShift === 'day' ? 'night' : 'day';
+    const currentStatus = getGamerStatusForDate(gamerId) || 'present_on_time';
+    await handleMarkAttendance(gamerId, currentStatus, undefined, undefined, undefined, nextShift);
+  };
+
+  // Sync farmed millions directly from order logs
+  const handleSyncFromOrders = async (gamerId: string, loggedVolume: number) => {
+    const currentStatus = getGamerStatusForDate(gamerId) || 'present_on_time';
+    setLocalFarmed(prev => ({ ...prev, [gamerId]: String(loggedVolume) }));
+    await handleMarkAttendance(gamerId, currentStatus, loggedVolume);
   };
 
   // Mark all filtered gamers present on-time in one click
@@ -127,7 +181,7 @@ export default function AttendanceTab() {
     }
   };
 
-  // Filter gamers based on search term and role filter
+  // Filter gamers based on search term, role filter, and shift filter
   const filteredGamers = gamers
     .filter(g => g.status === 'active') // Only mark attendance for active employees
     .filter(g => {
@@ -135,8 +189,9 @@ export default function AttendanceTab() {
                             g.employee_id.toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchesRole = roleFilter === 'all' || g.gamer_role === roleFilter;
+      const matchesShift = shiftFilter === 'all' || getGamerShiftForDate(g.id) === shiftFilter;
       
-      return matchesSearch && matchesRole;
+      return matchesSearch && matchesRole && matchesShift;
     });
 
   // Calculate statistics for the selected date
@@ -146,6 +201,9 @@ export default function AttendanceTab() {
   const countPresentLate = activeGamers.filter(g => getGamerStatusForDate(g.id) === 'present_late').length;
   const countAbsent = activeGamers.filter(g => getGamerStatusForDate(g.id) === 'absent').length;
   const countUnmarked = totalActive - (countPresentOnTime + countPresentLate + countAbsent);
+
+  const countDayShift = activeGamers.filter(g => getGamerShiftForDate(g.id) === 'day').length;
+  const countNightShift = activeGamers.filter(g => getGamerShiftForDate(g.id) === 'night').length;
 
   // Formatted date label
   const getFormattedDateLabel = (dateStr: string) => {
@@ -167,140 +225,103 @@ export default function AttendanceTab() {
         {/* Date Selector and Summary Card */}
         <div className="tactical-panel p-5 rounded clip-corners border border-cyber-cyan/30 lg:col-span-1 space-y-4">
           <h3 className="font-bold text-sm text-cyber-cyan uppercase tracking-widest border-b border-cyber-border/40 pb-2 mb-2 flex items-center gap-2">
-            <Calendar size={16} />
-            Dossier Period
+            <Calendar size={16} /> Audit Date Log
           </h3>
 
-          <div className="space-y-1.5">
-            <label className="text-slate-400 uppercase tracking-wider block">Operational Date</label>
+          <div className="space-y-1">
+            <label className="text-[10px] text-slate-400 uppercase">Select Target Date:</label>
             <input 
-              type="date" 
+              type="date"
               value={selectedDate}
               onChange={(e) => handleDateChange(e.target.value)}
-              className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan text-center font-bold"
+              className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-100 focus:outline-none focus:border-cyber-cyan font-bold"
             />
           </div>
 
-          <div className="p-3 border border-cyber-border/40 bg-slate-950/60 rounded space-y-2">
-            <div className="text-[10px] text-slate-400 uppercase tracking-wider">Assigned Pay Cycle</div>
-            <div className="text-sm font-bold text-slate-200 text-glow-cyan">{payCycleLabel || 'N/A'}</div>
-            <div className="text-[9px] text-slate-500 uppercase">
-              Shift: Mon-Sat, 9AM to 6PM
+          <div className="text-[11px] text-slate-400 bg-slate-900/40 p-2.5 rounded border border-cyber-border/20 space-y-1">
+            <div className="text-slate-300 font-bold">{getFormattedDateLabel(selectedDate)}</div>
+            <div className="text-[10px] text-cyber-cyan">Cycle: {payCycleLabel}</div>
+            <div className="text-[10px] text-slate-400 flex items-center gap-2 pt-1 border-t border-cyber-border/20">
+              <span className="text-amber-400 flex items-center gap-0.5"><Sun size={10} /> {countDayShift} Day</span>
+              <span className="text-indigo-300 flex items-center gap-0.5"><Moon size={10} /> {countNightShift} Night</span>
             </div>
-            {/* Quick action button for admin */}
-            {role === 'admin' && (
-              <button 
-                onClick={handleMarkAllPresentOnTime}
-                className="flex items-center justify-center gap-1.5 bg-cyber-green text-slate-950 font-mono text-xs uppercase font-black px-4 py-2.5 rounded shadow-neon-green/20 hover:bg-emerald-400 transition-all cursor-pointer w-full"
-              >
-                <CheckCircle2 size={14} />
-                Mark All Present (On-Time)
-              </button>
-            )}
-            {role === 'viewer' && (
-              <span className="flex items-center justify-center font-mono text-xs uppercase font-bold text-cyber-amber border border-cyber-amber/30 bg-cyber-amber/10 px-3 py-2 rounded">
-                Read-Only Audit Mode
-              </span>
-            )}
           </div>
+
+          {/* Quick Mark All Present */}
+          {role === 'admin' && countUnmarked > 0 && (
+            <button
+              onClick={handleMarkAllPresentOnTime}
+              className="w-full bg-cyber-green/15 hover:bg-cyber-green text-cyber-green hover:text-slate-950 border border-cyber-green/40 py-2 px-3 rounded font-bold uppercase transition-all flex items-center justify-center gap-1.5 shadow-neon-green/10 cursor-pointer text-[11px]"
+            >
+              <CheckCircle2 size={14} />
+              Mark All On-Time ({countUnmarked})
+            </button>
+          )}
         </div>
 
-        {/* Tactical Roll-Call Metrics */}
+        {/* Daily Stats Overview Cards */}
         <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 lg:col-span-3">
-          <h3 className="font-bold text-sm text-slate-300 uppercase tracking-widest border-b border-cyber-border/40 pb-2 mb-4 flex justify-between items-center">
-            <span>Roll-Call Status Dashboard</span>
-            <span className="text-[10px] font-normal text-slate-400 lowercase select-all">{getFormattedDateLabel(selectedDate)}</span>
+          <h3 className="font-bold text-sm text-slate-200 uppercase tracking-widest border-b border-cyber-border/40 pb-2 mb-4 flex items-center justify-between">
+            <span>Operational Roster Attendance Status</span>
+            <span className="text-[10px] text-cyber-cyan">{totalActive} Active Employees</span>
           </h3>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {/* Stat: Present On-Time */}
-            <div className="p-4 border border-cyber-green/20 rounded bg-slate-950/40 relative">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                <Check size={12} className="text-cyber-green" />
-                On-Time
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {/* Present On-Time */}
+            <div className="bg-slate-950/60 p-3.5 rounded border border-cyber-green/30 space-y-1">
+              <div className="text-[10px] text-slate-400 uppercase flex items-center justify-between">
+                <span>Present (On-Time)</span>
+                <Check className="text-cyber-green" size={12} />
               </div>
-              <div className="mt-2 flex items-baseline gap-1.5">
-                <span className="text-2xl font-black text-cyber-green text-glow-green">{countPresentOnTime}</span>
-                <span className="text-[9px] text-slate-500">ops</span>
-              </div>
-              <div className="mt-1.5 w-full bg-slate-900 h-1 rounded-full overflow-hidden">
-                <div 
-                  className="bg-cyber-green h-full" 
-                  style={{ width: `${totalActive > 0 ? (countPresentOnTime / totalActive) * 100 : 0}%` }}
-                ></div>
-              </div>
+              <div className="text-xl font-bold text-cyber-green">{countPresentOnTime}</div>
+              <div className="text-[9px] text-slate-500">Full Daily Base Earned</div>
             </div>
 
-            {/* Stat: Present Late */}
-            <div className="p-4 border border-cyber-amber/20 rounded bg-slate-950/40 relative">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                <Clock size={12} className="text-cyber-amber" />
-                Late arrival
+            {/* Present Late */}
+            <div className="bg-slate-950/60 p-3.5 rounded border border-cyber-amber/30 space-y-1">
+              <div className="text-[10px] text-slate-400 uppercase flex items-center justify-between">
+                <span>Present (Late)</span>
+                <Clock className="text-cyber-amber" size={12} />
               </div>
-              <div className="mt-2 flex items-baseline gap-1.5">
-                <span className="text-2xl font-black text-cyber-amber text-glow-amber">{countPresentLate}</span>
-                <span className="text-[9px] text-slate-500">ops</span>
-              </div>
-              <div className="mt-1.5 w-full bg-slate-900 h-1 rounded-full overflow-hidden">
-                <div 
-                  className="bg-cyber-amber h-full" 
-                  style={{ width: `${totalActive > 0 ? (countPresentLate / totalActive) * 100 : 0}%` }}
-                ></div>
-              </div>
+              <div className="text-xl font-bold text-cyber-amber">{countPresentLate}</div>
+              <div className="text-[9px] text-slate-500">No daily penalty</div>
             </div>
 
-            {/* Stat: Absent */}
-            <div className="p-4 border border-cyber-red/20 rounded bg-slate-950/40 relative">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                <X size={12} className="text-cyber-red" />
-                Absent (Deducted)
+            {/* Absent */}
+            <div className="bg-slate-950/60 p-3.5 rounded border border-cyber-red/30 space-y-1">
+              <div className="text-[10px] text-slate-400 uppercase flex items-center justify-between">
+                <span>Absent</span>
+                <X className="text-cyber-red" size={12} />
               </div>
-              <div className="mt-2 flex items-baseline gap-1.5">
-                <span className="text-2xl font-black text-cyber-red text-glow-red">{countAbsent}</span>
-                <span className="text-[9px] text-slate-500">ops</span>
-              </div>
-              <div className="mt-1.5 w-full bg-slate-900 h-1 rounded-full overflow-hidden">
-                <div 
-                  className="bg-cyber-red h-full" 
-                  style={{ width: `${totalActive > 0 ? (countAbsent / totalActive) * 100 : 0}%` }}
-                ></div>
-              </div>
+              <div className="text-xl font-bold text-cyber-red">{countAbsent}</div>
+              <div className="text-[9px] text-slate-500">No Daily Base Earned</div>
             </div>
 
-            {/* Stat: Unmarked */}
-            <div className="p-4 border border-cyber-border rounded bg-slate-950/40 relative">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                <Users size={12} className="text-slate-400" />
-                Unmarked
+            {/* Unmarked */}
+            <div className="bg-slate-950/60 p-3.5 rounded border border-cyber-border/40 space-y-1">
+              <div className="text-[10px] text-slate-400 uppercase flex items-center justify-between">
+                <span>Unlogged</span>
+                <Users className="text-slate-500" size={12} />
               </div>
-              <div className="mt-2 flex items-baseline gap-1.5">
-                <span className="text-2xl font-black text-slate-400">{countUnmarked}</span>
-                <span className="text-[9px] text-slate-500">ops</span>
-              </div>
-              <div className="mt-1.5 w-full bg-slate-900 h-1 rounded-full overflow-hidden">
-                <div 
-                  className="bg-slate-500 h-full" 
-                  style={{ width: `${totalActive > 0 ? (countUnmarked / totalActive) * 100 : 0}%` }}
-                ></div>
-              </div>
+              <div className="text-xl font-bold text-slate-400">{countUnmarked}</div>
+              <div className="text-[9px] text-slate-500">Pending audit for today</div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Main Roster List */}
-      <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40">
-        <div className="flex flex-col md:flex-row gap-4 items-center justify-between border-b border-cyber-border/40 pb-4 mb-4">
-          <div className="flex items-center gap-2">
-            <Users size={16} className="text-cyber-cyan" />
-            <h3 className="font-bold text-sm text-slate-200 uppercase tracking-wider">
-              Operator Attendance Roster ({filteredGamers.length} Active)
-            </h3>
+      {/* Roster Attendance Table */}
+      <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 space-y-4">
+        
+        {/* Table Controls (Search & Role Filter & Shift Filter) */}
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b border-cyber-border/30 pb-4">
+          <div className="text-sm font-bold text-cyber-cyan uppercase tracking-wider flex items-center gap-2">
+            <Users size={16} /> Operator Manifest
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
             {/* Search Input */}
-            <div className="relative flex-1 sm:w-60">
+            <div className="relative flex-1 sm:w-56">
               <Search className="absolute left-2.5 top-2.5 text-slate-500" size={14} />
               <input 
                 type="text"
@@ -310,6 +331,17 @@ export default function AttendanceTab() {
                 className="w-full bg-slate-950 border border-cyber-border rounded pl-9 pr-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan text-xs"
               />
             </div>
+
+            {/* Shift Filter */}
+            <select
+              value={shiftFilter}
+              onChange={(e) => setShiftFilter(e.target.value as any)}
+              className="bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-300 focus:outline-none focus:border-cyber-cyan text-xs cursor-pointer"
+            >
+              <option value="all">All Shifts</option>
+              <option value="day">☀️ Day Shift Only</option>
+              <option value="night">🌙 Night Shift Only</option>
+            </select>
 
             {/* Role Filter */}
             <select
@@ -338,15 +370,18 @@ export default function AttendanceTab() {
                   <th className="py-3 px-3">Operator Dossier</th>
                   <th className="py-3 px-3">Clearance ID</th>
                   <th className="py-3 px-3">Role / Level</th>
-                  <th className="py-3 px-3 w-32">Farmed Today (M)</th>
-                  <th className="py-3 px-3 w-48">Overtime Hours</th>
+                  <th className="py-3 px-3 text-center">Shift</th>
+                  <th className="py-3 px-3 min-w-[190px]">Farmed Today (M)</th>
+                  <th className="py-3 px-3 w-44">Overtime Hours</th>
                   <th className="py-3 px-3 text-center w-72">Mark Attendance Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-cyber-border/20">
                 {filteredGamers.map((gamer) => {
                   const currentStatus = getGamerStatusForDate(gamer.id);
+                  const currentShift = getGamerShiftForDate(gamer.id);
                   const statusState = saveStatus[gamer.id];
+                  const orderLogsToday = getGamerLoggedOrderVolumeForDate(gamer.id);
                   
                   let roleBadgeColor = 'border-slate-700 bg-slate-900/60 text-slate-400';
                   let roleText = 'GAMER';
@@ -358,14 +393,22 @@ export default function AttendanceTab() {
                     roleText = 'TEAM LDR';
                   }
 
+                  const currentFarmedVal = parseFloat(getGamerFarmedForDate(gamer.id)) || 0;
+                  const hasOrderDiff = orderLogsToday.total > 0 && currentFarmedVal !== orderLogsToday.total;
+
                   return (
                     <tr key={gamer.id} className="hover:bg-slate-900/25 transition-all">
+                      {/* Name */}
                       <td className="py-3.5 px-3 font-bold text-slate-200">
                         {gamer.name}
                       </td>
+
+                      {/* Employee ID */}
                       <td className="py-3.5 px-3 text-slate-400 select-all font-mono">
                         {gamer.employee_id}
                       </td>
+
+                      {/* Role & Level */}
                       <td className="py-3.5 px-3 font-mono text-[10px]">
                         <div className="flex items-center gap-1.5">
                           <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold ${roleBadgeColor}`}>
@@ -376,40 +419,94 @@ export default function AttendanceTab() {
                           )}
                         </div>
                       </td>
+
+                      {/* Shift (Day vs Night Toggle) */}
+                      <td className="py-3.5 px-3 text-center">
+                        {role === 'admin' ? (
+                          <button
+                            onClick={() => handleToggleShift(gamer.id)}
+                            title="Click to toggle between Day and Night shift"
+                            className={`inline-flex items-center gap-1 px-2 py-1 rounded border text-[10px] font-bold transition-all cursor-pointer ${
+                              currentShift === 'night'
+                                ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40 hover:bg-indigo-500/30'
+                                : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                            }`}
+                          >
+                            {currentShift === 'night' ? (
+                              <>
+                                <Moon size={11} /> <span>Night</span>
+                              </>
+                            ) : (
+                              <>
+                                <Sun size={11} /> <span>Day</span>
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
+                            currentShift === 'night' ? 'text-indigo-300' : 'text-amber-300'
+                          }`}>
+                            {currentShift === 'night' ? <Moon size={11} /> : <Sun size={11} />}
+                            {currentShift === 'night' ? 'Night' : 'Day'}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Farmed Today & Order Volume Sync */}
                       <td className="py-3.5 px-3">
                         {gamer.gamer_role !== 'technical_manager' ? (
-                          <div className="flex items-center gap-1.5 font-mono">
-                            <input 
-                              type="number"
-                              min="0"
-                              step="any"
-                              disabled={role === 'viewer'}
-                              value={getGamerFarmedForDate(gamer.id)}
-                              onChange={(e) => {
-                                if (role === 'viewer') return;
-                                setLocalFarmed(prev => ({ ...prev, [gamer.id]: e.target.value }));
-                              }}
-                              onBlur={() => {
-                                if (role === 'viewer') return;
-                                const valStr = localFarmed[gamer.id];
-                                if (valStr === undefined) return;
-                                const val = parseFloat(valStr) || 0;
-                                handleMarkAttendance(gamer.id, currentStatus || 'present_on_time', val);
-                                setLocalFarmed(prev => {
-                                  const next = { ...prev };
-                                  delete next[gamer.id];
-                                  return next;
-                                });
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.currentTarget.blur();
-                                }
-                              }}
-                              placeholder="0"
-                              className="w-20 bg-slate-950 border border-cyber-border/40 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-cyber-cyan text-right text-xs disabled:opacity-60 disabled:cursor-not-allowed"
-                            />
-                            <span className="text-[10px] text-slate-500 font-bold uppercase">M</span>
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 font-mono">
+                              <input 
+                                type="number"
+                                min="0"
+                                step="any"
+                                disabled={role === 'viewer'}
+                                value={getGamerFarmedForDate(gamer.id)}
+                                onChange={(e) => {
+                                  if (role === 'viewer') return;
+                                  setLocalFarmed(prev => ({ ...prev, [gamer.id]: e.target.value }));
+                                }}
+                                onBlur={() => {
+                                  if (role === 'viewer') return;
+                                  const valStr = localFarmed[gamer.id];
+                                  if (valStr === undefined) return;
+                                  const val = parseFloat(valStr) || 0;
+                                  handleMarkAttendance(gamer.id, currentStatus || 'present_on_time', val);
+                                  setLocalFarmed(prev => {
+                                    const next = { ...prev };
+                                    delete next[gamer.id];
+                                    return next;
+                                  });
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.currentTarget.blur();
+                                  }
+                                }}
+                                placeholder="0"
+                                className="w-20 bg-slate-950 border border-cyber-border/40 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-cyber-cyan text-right text-xs disabled:opacity-60 disabled:cursor-not-allowed"
+                              />
+                              <span className="text-[10px] text-slate-500 font-bold uppercase">M</span>
+                            </div>
+
+                            {/* Order Logs Integration Indicator */}
+                            {orderLogsToday.total > 0 && (
+                              <div className="flex items-center gap-1.5 text-[9px]">
+                                <span className="text-cyber-cyan font-bold flex items-center gap-0.5">
+                                  <Zap size={9} /> Orders: {orderLogsToday.total}M
+                                </span>
+                                {role === 'admin' && hasOrderDiff && (
+                                  <button
+                                    onClick={() => handleSyncFromOrders(gamer.id, orderLogsToday.total)}
+                                    title="Sync farmed amount from order logs"
+                                    className="bg-cyber-cyan/20 hover:bg-cyber-cyan text-cyber-cyan hover:text-slate-950 border border-cyber-cyan/40 px-1.5 py-0.2 rounded font-bold transition-all cursor-pointer"
+                                  >
+                                    Sync
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <span className="text-slate-600 font-mono text-[10px] uppercase">N/A</span>
@@ -451,8 +548,9 @@ export default function AttendanceTab() {
                             />
                             <span className="text-[9px] text-slate-500">h</span>
                           </div>
+
                           <div className="flex items-center gap-1">
-                            <span className="text-cyber-amber font-bold" title="Rest Day / Holiday Overtime (2.0x rate: K7.69/hr)">2.0x:</span>
+                            <span className="text-slate-500 font-bold" title="Holiday / Rest Day Overtime (2.0x rate: K7.69/hr)">2.0x:</span>
                             <input 
                               type="number"
                               min="0"
@@ -485,6 +583,8 @@ export default function AttendanceTab() {
                           </div>
                         </div>
                       </td>
+
+                      {/* Attendance Status Buttons */}
                       <td className="py-3.5 px-3">
                         {role === 'admin' ? (
                           <div className="flex items-center justify-center gap-2">

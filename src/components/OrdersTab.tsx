@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
-import { OrderStatus, AssetType, Order } from '../types';
+import { useApp, getOrderRunners, getOrderProgressSummary, isGamerOnOrder } from '../context/AppContext';
+import { OrderStatus, AssetType, Order, ShiftType, OrderDailyProgress } from '../types';
 import { 
   Gamepad2, 
   Search, 
@@ -14,7 +14,16 @@ import {
   Pause,
   CheckCircle,
   AlertTriangle,
-  XCircle
+  XCircle,
+  Sun,
+  Moon,
+  Home,
+  BarChart3,
+  Users,
+  UserPlus,
+  Clock,
+  Layers,
+  Sparkles
 } from 'lucide-react';
 
 const formatM = (val: number) => {
@@ -23,7 +32,18 @@ const formatM = (val: number) => {
 };
 
 export default function OrdersTab() {
-  const { orders: allOrders, gamers, addOrder, updateOrder, deleteOrder, updateOrderStatus, role, gamerProfile } = useApp();
+  const { 
+    orders: allOrders, 
+    gamers, 
+    addOrder, 
+    updateOrder, 
+    deleteOrder, 
+    updateOrderStatus, 
+    logOrderDailyProgress,
+    deleteOrderDailyProgress,
+    role, 
+    gamerProfile 
+  } = useApp();
 
   // Control UI states
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -31,30 +51,56 @@ export default function OrdersTab() {
 
   // Form Fields
   const [orderNumber, setOrderNumber] = useState('');
-  const [gamerId, setGamerId] = useState('');
+  const [assignedGamerIds, setAssignedGamerIds] = useState<string[]>([]);
+  const [selectedRunnerToAdd, setSelectedRunnerToAdd] = useState<string>('');
   const [sizeMillions, setSizeMillions] = useState<number>(50);
   const [assetType, setAssetType] = useState<AssetType>('Haval Coins');
   const [startDate, setStartDate] = useState('');
   const [status, setStatus] = useState<OrderStatus>('Running');
   const [payout, setPayout] = useState<number>(50);
   const [progressMillions, setProgressMillions] = useState<number>(0);
-  const [isDualRunner, setIsDualRunner] = useState<boolean>(false);
-  const [coGamerId, setCoGamerId] = useState<string>('');
   const [isPayoutOverridden, setIsPayoutOverridden] = useState(false);
   const [formError, setFormError] = useState('');
   const [gamerSearchQuery, setGamerSearchQuery] = useState('');
+
+  // Daily Progress Logging Modal State
+  const [activeLogOrder, setActiveLogOrder] = useState<Order | null>(null);
+  const [logGamerId, setLogGamerId] = useState<string>('');
+  const [logDate, setLogDate] = useState<string>(() => {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  });
+  const [logShift, setLogShift] = useState<ShiftType>('day');
+  const [logVolume, setLogVolume] = useState<string>('');
+  const [logNotes, setLogNotes] = useState<string>('');
+  const [logSubmitting, setLogSubmitting] = useState(false);
+  const [logError, setLogError] = useState('');
 
   // Filters State
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [gamerFilter, setGamerFilter] = useState<string>('All');
-  const [missionTypeFilter, setMissionTypeFilter] = useState<'All' | 'solo' | 'dual'>('All');
+  const [missionTypeFilter, setMissionTypeFilter] = useState<'All' | 'solo' | 'multi'>('All');
+  const [shiftFilter, setShiftFilter] = useState<'All' | 'day' | 'night' | 'home'>('All');
   const [sortBy, setSortBy] = useState<'date' | 'order_number' | 'size' | 'payout'>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
-  // Filter orders if user is a gamer (includes shared dual orders)
+  // Keep activeLogOrder in sync when allOrders updates
+  useEffect(() => {
+    if (activeLogOrder) {
+      const refreshed = allOrders.find(o => o.id === activeLogOrder.id);
+      if (refreshed) {
+        setActiveLogOrder(refreshed);
+      }
+    }
+  }, [allOrders]);
+
+  // Filter orders if user is a gamer (includes multi-runner and volume-logged missions)
   const orders = role === 'gamer' && gamerProfile && gamerProfile.gamer_role !== 'technical_manager'
-    ? allOrders.filter(o => o.gamer_id === gamerProfile.id || o.co_gamer_id === gamerProfile.id)
+    ? allOrders.filter(o => isGamerOnOrder(o, gamerProfile.id))
     : allOrders;
 
   const isManager = role === 'admin' || (role === 'gamer' && gamerProfile?.gamer_role === 'technical_manager');
@@ -65,8 +111,8 @@ export default function OrdersTab() {
     const activeGamers = gamers.filter(g => g.status === 'active' && g.gamer_role !== 'technical_manager');
     
     return activeGamers.map(g => {
-      // Find running orders assigned to this gamer (as primary or co-runner)
-      const runningMissions = allOrders.filter(o => (o.gamer_id === g.id || o.co_gamer_id === g.id) && o.status === 'Running');
+      // Find running orders assigned to this gamer
+      const runningMissions = allOrders.filter(o => isGamerOnOrder(o, g.id) && o.status === 'Running');
       return {
         gamer: g,
         isDeployed: runningMissions.length > 0,
@@ -87,7 +133,7 @@ export default function OrdersTab() {
     )
   );
 
-  // Trigger payout auto-update when sizeMillions changes (unless overridden)
+  // Auto-update payout when sizeMillions changes (unless overridden)
   useEffect(() => {
     if (!isPayoutOverridden) {
       setPayout(sizeMillions);
@@ -101,16 +147,16 @@ export default function OrdersTab() {
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     
     setOrderNumber('');
-    const activeGamers = gamers.filter(g => g.status === 'active');
-    setGamerId(activeGamers.length > 0 ? activeGamers[0].id : gamers[0]?.id || '');
+    const activeGamers = gamers.filter(g => g.status === 'active' && g.gamer_role !== 'technical_manager');
+    const initialGamerId = activeGamers.length > 0 ? activeGamers[0].id : gamers[0]?.id || '';
+    setAssignedGamerIds(initialGamerId ? [initialGamerId] : []);
+    setSelectedRunnerToAdd('');
     setSizeMillions(50);
     setAssetType('Haval Coins');
     setStartDate(now.toISOString().slice(0, 16));
     setStatus('Running');
     setPayout(50);
     setProgressMillions(0);
-    setIsDualRunner(false);
-    setCoGamerId('');
     setIsPayoutOverridden(false);
     setFormError('');
     setGamerSearchQuery('');
@@ -122,9 +168,9 @@ export default function OrdersTab() {
     if (!isManager) return;
     setIsEditing(order);
     setOrderNumber(order.order_number);
-    setGamerId(order.gamer_id);
-    setIsDualRunner(!!order.co_gamer_id);
-    setCoGamerId(order.co_gamer_id || '');
+    const runners = getOrderRunners(order);
+    setAssignedGamerIds(runners.length > 0 ? runners : [order.gamer_id]);
+    setSelectedRunnerToAdd('');
     setSizeMillions(order.size_millions);
     setAssetType(order.asset_type || 'Haval Coins');
     setStartDate(new Date(order.start_date).toISOString().slice(0, 16));
@@ -137,6 +183,24 @@ export default function OrdersTab() {
     setIsFormOpen(true);
   };
 
+  // Add runner to form's assigned list
+  const handleAddRunner = () => {
+    if (!selectedRunnerToAdd) return;
+    if (assignedGamerIds.includes(selectedRunnerToAdd)) return;
+    setAssignedGamerIds([...assignedGamerIds, selectedRunnerToAdd]);
+    setSelectedRunnerToAdd('');
+  };
+
+  // Remove runner from form's assigned list
+  const handleRemoveRunner = (idToRemove: string) => {
+    if (assignedGamerIds.length <= 1) {
+      setFormError('At least one operational operator must remain assigned to the order.');
+      return;
+    }
+    setAssignedGamerIds(assignedGamerIds.filter(id => id !== idToRemove));
+    setFormError('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isManager) return;
@@ -144,25 +208,18 @@ export default function OrdersTab() {
       setFormError('Order Number is required.');
       return;
     }
-    if (!gamerId) {
-      setFormError('An operational Gamer must be assigned.');
+    if (assignedGamerIds.length === 0) {
+      setFormError('At least one operational operator must be assigned.');
       return;
     }
     if (sizeMillions <= 0) {
       setFormError('Order Size must be positive.');
       return;
     }
-    if (isDualRunner && !coGamerId) {
-      setFormError('Please select a secondary (co-runner) gamer for shared order.');
-      return;
-    }
-    if (isDualRunner && coGamerId === gamerId) {
-      setFormError('Primary runner and secondary runner cannot be the same operator.');
-      return;
-    }
 
     const formattedDate = new Date(startDate).toISOString();
-    const finalCoGamer = isDualRunner ? coGamerId : null;
+    const primaryGamerId = assignedGamerIds[0];
+    const secondaryGamerId = assignedGamerIds.length > 1 ? assignedGamerIds[1] : null;
 
     if (isEditing) {
       const numberExists = orders.some(
@@ -176,14 +233,16 @@ export default function OrdersTab() {
       const res = await updateOrder(
         isEditing.id,
         orderNumber.trim(),
-        gamerId,
+        primaryGamerId,
         sizeMillions,
         assetType,
         formattedDate,
         status,
         payout,
         progressMillions,
-        finalCoGamer
+        secondaryGamerId,
+        assignedGamerIds,
+        isEditing.daily_progress
       );
       if (res.success) {
         setIsFormOpen(false);
@@ -200,14 +259,16 @@ export default function OrdersTab() {
 
       const res = await addOrder(
         orderNumber.trim(),
-        gamerId,
+        primaryGamerId,
         sizeMillions,
         assetType,
         formattedDate,
         status,
         payout,
         progressMillions,
-        finalCoGamer
+        secondaryGamerId,
+        assignedGamerIds,
+        []
       );
       if (res.success) {
         setIsFormOpen(false);
@@ -227,6 +288,61 @@ export default function OrdersTab() {
     }
   };
 
+  // Open Daily Progress Logging Modal
+  const openDailyLogModal = (order: Order) => {
+    setActiveLogOrder(order);
+    const runners = getOrderRunners(order);
+    if (role === 'gamer' && gamerProfile && runners.includes(gamerProfile.id)) {
+      setLogGamerId(gamerProfile.id);
+    } else {
+      setLogGamerId(runners[0] || order.gamer_id);
+    }
+    setLogVolume('');
+    setLogNotes('');
+    setLogError('');
+  };
+
+  // Submit daily progress entry
+  const handleAddDailyProgress = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeLogOrder) return;
+    const vol = parseFloat(logVolume);
+    if (isNaN(vol) || vol <= 0) {
+      setLogError('Please specify a positive volume made in Millions.');
+      return;
+    }
+    if (!logGamerId) {
+      setLogError('Please choose which operator made this volume.');
+      return;
+    }
+
+    setLogSubmitting(true);
+    setLogError('');
+
+    const res = await logOrderDailyProgress(activeLogOrder.id, {
+      gamer_id: logGamerId,
+      date: logDate,
+      shift: logShift,
+      volume_millions: vol,
+      notes: logNotes.trim()
+    });
+
+    setLogSubmitting(false);
+    if (res.success) {
+      setLogVolume('');
+      setLogNotes('');
+    } else {
+      setLogError(res.error || 'Failed to record daily progress.');
+    }
+  };
+
+  // Delete daily progress log entry
+  const handleDeleteLogEntry = async (logId: string) => {
+    if (!activeLogOrder) return;
+    if (!confirm('Are you sure you want to remove this volume log entry?')) return;
+    await deleteOrderDailyProgress(activeLogOrder.id, logId);
+  };
+
   const toggleSort = (field: 'date' | 'order_number' | 'size' | 'payout') => {
     if (sortBy === field) {
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
@@ -238,27 +354,27 @@ export default function OrdersTab() {
 
   const filteredOrders = orders
     .filter(order => {
-      const assignedGamer = gamers.find(g => g.id === order.gamer_id);
-      const coGamer = order.co_gamer_id ? gamers.find(g => g.id === order.co_gamer_id) : null;
-      const gamerName = assignedGamer ? assignedGamer.name : '';
-      const coGamerName = coGamer ? coGamer.name : '';
-      const employeeId = assignedGamer ? assignedGamer.employee_id : '';
-      const coEmployeeId = coGamer ? coGamer.employee_id : '';
+      const runners = getOrderRunners(order);
+      const runnerGamers = runners.map(id => gamers.find(g => g.id === id)).filter(Boolean);
       
       const matchesSearch = 
         order.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        gamerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        coGamerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        employeeId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        coEmployeeId.toLowerCase().includes(searchTerm.toLowerCase());
+        runnerGamers.some(g => 
+          g?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          g?.employee_id.toLowerCase().includes(searchTerm.toLowerCase())
+        );
 
       const matchesStatus = statusFilter === 'All' || order.status === statusFilter;
-      const matchesGamer = gamerFilter === 'All' || order.gamer_id === gamerFilter || order.co_gamer_id === gamerFilter;
+      const matchesGamer = gamerFilter === 'All' || isGamerOnOrder(order, gamerFilter);
+      const isMulti = runners.length > 1;
       const matchesMissionType = missionTypeFilter === 'All' || 
-        (missionTypeFilter === 'dual' && !!order.co_gamer_id) || 
-        (missionTypeFilter === 'solo' && !order.co_gamer_id);
+        (missionTypeFilter === 'multi' && isMulti) || 
+        (missionTypeFilter === 'solo' && !isMulti);
 
-      return matchesSearch && matchesStatus && matchesGamer && matchesMissionType;
+      const matchesShift = shiftFilter === 'All' || 
+        order.daily_progress?.some(l => l.shift === shiftFilter);
+
+      return matchesSearch && matchesStatus && matchesGamer && matchesMissionType && matchesShift;
     })
     .sort((a, b) => {
       let comparison = 0;
@@ -275,6 +391,28 @@ export default function OrdersTab() {
       return sortDirection === 'asc' ? comparison : -comparison;
     });
 
+  const getShiftBadge = (shift: ShiftType) => {
+    if (shift === 'day') {
+      return (
+        <span className="inline-flex items-center gap-1 text-[9px] bg-amber-500/15 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded font-mono font-bold">
+          <Sun size={10} /> Day Shift
+        </span>
+      );
+    }
+    if (shift === 'night') {
+      return (
+        <span className="inline-flex items-center gap-1 text-[9px] bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded font-mono font-bold">
+          <Moon size={10} /> Night Shift
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 text-[9px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded font-mono font-bold">
+        <Home size={10} /> Home / Mobile
+      </span>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Search and Action Bar */}
@@ -286,7 +424,7 @@ export default function OrdersTab() {
           </span>
           <input 
             type="text" 
-            placeholder="Search by Order ID..."
+            placeholder="Search by Order ID or Operator name/ID..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-cyber-dark/80 border border-cyber-border rounded pl-10 pr-3 py-2.5 text-slate-200 focus:outline-none focus:border-cyber-cyan text-xs"
@@ -294,12 +432,12 @@ export default function OrdersTab() {
         </div>
 
         {/* Filters and Add Buttons */}
-        <div className="flex flex-wrap gap-3 font-mono text-xs">
+        <div className="flex flex-wrap gap-2.5 font-mono text-xs items-center">
           {/* Status Filter */}
           <select 
             value={statusFilter} 
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-cyber-dark border border-cyber-border rounded px-3 py-2 text-slate-300 focus:outline-none focus:border-cyber-cyan cursor-pointer"
+            className="bg-cyber-dark/80 border border-cyber-border rounded px-3 py-2 text-slate-300 focus:outline-none focus:border-cyber-cyan cursor-pointer text-xs"
           >
             <option value="All">All Statuses</option>
             <option value="Running">Running</option>
@@ -309,25 +447,37 @@ export default function OrdersTab() {
             <option value="Violation">Violation</option>
           </select>
 
-          {/* Mission Type Filter (Solo vs Dual) */}
+          {/* Mission Type Filter */}
           <select 
             value={missionTypeFilter} 
-            onChange={(e) => setMissionTypeFilter(e.target.value as 'All' | 'solo' | 'dual')}
-            className="bg-cyber-dark border border-cyber-border rounded px-3 py-2 text-slate-300 focus:outline-none focus:border-cyber-cyan cursor-pointer"
+            onChange={(e) => setMissionTypeFilter(e.target.value as 'All' | 'solo' | 'multi')}
+            className="bg-cyber-dark/80 border border-cyber-border rounded px-3 py-2 text-slate-300 focus:outline-none focus:border-cyber-cyan cursor-pointer text-xs"
           >
-            <option value="All">All Mission Types</option>
-            <option value="dual">⚡ Dual 50/50 Missions</option>
-            <option value="solo">Solo Missions</option>
+            <option value="All">All Teams</option>
+            <option value="solo">Solo Operators</option>
+            <option value="multi">Multi-Operator Squads</option>
           </select>
 
-          {/* Gamer Filter (Shown to Admin, Viewer & Technical Manager) */}
+          {/* Shift Filter */}
+          <select 
+            value={shiftFilter} 
+            onChange={(e) => setShiftFilter(e.target.value as 'All' | 'day' | 'night' | 'home')}
+            className="bg-cyber-dark/80 border border-cyber-border rounded px-3 py-2 text-slate-300 focus:outline-none focus:border-cyber-cyan cursor-pointer text-xs"
+          >
+            <option value="All">All Shifts</option>
+            <option value="day">☀️ Day Shift</option>
+            <option value="night">🌙 Night Shift</option>
+            <option value="home">🏠 Home / Mobile</option>
+          </select>
+
+          {/* Gamer Filter */}
           {isAdminOrViewer && (
             <select 
               value={gamerFilter} 
               onChange={(e) => setGamerFilter(e.target.value)}
-              className="bg-cyber-dark border border-cyber-border rounded px-3 py-2 text-slate-300 focus:outline-none focus:border-cyber-cyan cursor-pointer max-w-[150px]"
+              className="bg-cyber-dark/80 border border-cyber-border rounded px-3 py-2 text-slate-300 focus:outline-none focus:border-cyber-cyan cursor-pointer max-w-[170px] truncate text-xs"
             >
-              <option value="All">All Gamers</option>
+              <option value="All">All Operators</option>
               {gamers
                 .filter(g => g.gamer_role !== 'technical_manager')
                 .map(g => (
@@ -337,24 +487,15 @@ export default function OrdersTab() {
             </select>
           )}
 
-          {/* Deploy buttons (Shown to Admin & Technical Manager) */}
+          {/* Deploy Order Button */}
           {isManager && (
-            gamers.length === 0 ? (
-              <button 
-                disabled 
-                className="flex items-center gap-1 opacity-50 bg-slate-800 text-slate-500 border border-slate-700 px-3 py-2 rounded font-bold cursor-not-allowed"
-              >
-                Recruit Gamers First
-              </button>
-            ) : (
-              <button 
-                onClick={openNewOrderForm}
-                className="flex items-center gap-1 bg-cyber-cyan text-slate-950 font-bold px-3 py-2 rounded hover:bg-cyan-400 shadow-neon-cyan/15 hover:shadow-neon-cyan/25 transition-all cursor-pointer uppercase tracking-wider"
-              >
-                <PlusCircle size={14} />
-                Deploy Order
-              </button>
-            )
+            <button 
+              onClick={openNewOrderForm}
+              className="flex items-center gap-1.5 bg-cyber-cyan text-slate-950 font-bold px-3.5 py-2 rounded hover:bg-cyan-400 shadow-neon-cyan/20 hover:shadow-neon-cyan/30 transition-all cursor-pointer uppercase tracking-wider"
+            >
+              <PlusCircle size={14} />
+              Deploy Order
+            </button>
           )}
           {role === 'viewer' && (
             <span className="text-[10px] text-cyber-amber font-mono bg-cyber-amber/10 px-2.5 py-1.5 rounded border border-cyber-amber/30 font-bold uppercase">
@@ -364,10 +505,10 @@ export default function OrdersTab() {
         </div>
       </div>
 
-      {/* Deploy/Edit Order Dialog Overlay (Admin & Technical Manager) */}
+      {/* Deploy/Edit Order Dialog Overlay */}
       {isFormOpen && isManager && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="tactical-panel p-6 rounded clip-corners border border-cyber-cyan/40 w-full max-w-lg relative">
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="tactical-panel p-6 rounded clip-corners border border-cyber-cyan/40 w-full max-w-xl relative my-8">
             <div className="hud-grid"></div>
             
             <h3 className="font-mono font-bold text-sm text-cyber-cyan uppercase tracking-widest border-b border-cyber-cyan/20 pb-3 mb-5 flex justify-between items-center">
@@ -384,93 +525,95 @@ export default function OrdersTab() {
                 </div>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Order Code */}
-                <div className="space-y-1">
-                  <label className="text-slate-400 uppercase tracking-wider">Order Number</label>
-                  <input 
-                    type="text" 
-                    value={orderNumber}
-                    onChange={(e) => setOrderNumber(e.target.value)}
-                    placeholder="e.g. ZP-2024"
-                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan"
-                  />
-                </div>
-
-                {/* Gamer Select with search filter */}
-                <div className="space-y-1">
-                  <label className="text-slate-400 uppercase tracking-wider block">Assign Gamer Dossier</label>
-                  <input 
-                    type="text"
-                    value={gamerSearchQuery}
-                    onChange={(e) => setGamerSearchQuery(e.target.value)}
-                    placeholder="Filter by name or ID..."
-                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyber-cyan text-[11px] mb-1.5"
-                  />
-                  <select 
-                    value={gamerId} 
-                    onChange={(e) => setGamerId(e.target.value)}
-                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer"
-                  >
-                    <option value="" disabled>Select active gamer...</option>
-                    {filteredGamersForSelect
-                      .filter(g => g.gamer_role !== 'technical_manager')
-                      .map(g => (
-                        <option key={g.id} value={g.id}>{g.name} (ID: {g.employee_id})</option>
-                      ))
-                    }
-                  </select>
-                </div>
+              {/* Order Number */}
+              <div className="space-y-1">
+                <label className="text-slate-400 uppercase tracking-wider">Order Number</label>
+                <input 
+                  type="text" 
+                  value={orderNumber}
+                  onChange={(e) => setOrderNumber(e.target.value)}
+                  placeholder="e.g. ZP-2024 or 100M-NIGHT-01"
+                  className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan"
+                />
               </div>
 
-              {/* Dual Runner / Shared Order 50/50 Toggle */}
-              <div className="p-3 bg-slate-900/50 rounded border border-cyber-border/40 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-slate-300 font-bold uppercase text-[11px] flex items-center gap-2 cursor-pointer select-none">
-                    <input 
-                      type="checkbox"
-                      checked={isDualRunner}
-                      onChange={(e) => {
-                        setIsDualRunner(e.target.checked);
-                        if (!e.target.checked) setCoGamerId('');
-                      }}
-                      className="rounded border-cyber-border text-cyber-cyan focus:ring-0 cursor-pointer w-4 h-4"
-                    />
-                    <span>Dual Runner Mission (Shared 50/50 Split)</span>
+              {/* Multi-Operator Assignment Section */}
+              <div className="p-4 bg-slate-900/60 rounded border border-cyber-cyan/30 space-y-3">
+                <div className="flex items-center justify-between border-b border-cyber-border/30 pb-2">
+                  <label className="text-cyber-cyan font-bold uppercase text-[11px] flex items-center gap-1.5">
+                    <Users size={14} /> Assigned Operators ({assignedGamerIds.length})
                   </label>
-                  {isDualRunner && (
-                    <span className="text-[10px] text-cyber-cyan font-bold bg-cyber-cyan/10 px-1.5 py-0.5 rounded border border-cyber-cyan/20">
-                      50% Split Active
-                    </span>
-                  )}
+                  <span className="text-[10px] text-slate-400">
+                    {assignedGamerIds.length > 1 ? '⚡ Multi-Operator Shared Mission' : 'Solo Assignment'}
+                  </span>
                 </div>
 
-                {isDualRunner && (
-                  <div className="space-y-2 pt-2 border-t border-cyber-border/30">
-                    <label className="text-slate-400 uppercase tracking-wider block text-[10px]">Assign Secondary (Co-Runner) Gamer</label>
+                {/* Assigned Runners Chip List */}
+                <div className="space-y-1.5">
+                  <span className="text-[10px] text-slate-400 block uppercase">Current Crew on this Order:</span>
+                  <div className="flex flex-wrap gap-2">
+                    {assignedGamerIds.map((gId, index) => {
+                      const gamer = gamers.find(g => g.id === gId);
+                      const isLead = index === 0;
+                      return (
+                        <div 
+                          key={gId} 
+                          className={`flex items-center gap-2 px-2.5 py-1.5 rounded border text-xs ${
+                            isLead 
+                              ? 'bg-cyber-cyan/15 border-cyber-cyan/40 text-cyber-cyan font-bold' 
+                              : 'bg-slate-800/80 border-cyber-border text-slate-300'
+                          }`}
+                        >
+                          <span className="text-[9px] uppercase px-1 py-0.2 rounded font-mono bg-slate-950/60">
+                            {isLead ? 'Lead' : `Runner #${index + 1}`}
+                          </span>
+                          <span>{gamer?.name || 'Unknown'} (ID: {gamer?.employee_id})</span>
+                          {assignedGamerIds.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveRunner(gId)}
+                              title="Remove operator from order"
+                              className="text-slate-400 hover:text-cyber-red ml-1 transition-colors cursor-pointer"
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Add Operator to Order */}
+                <div className="pt-2 border-t border-cyber-border/20 space-y-2">
+                  <span className="text-[10px] text-slate-400 block uppercase">Add Another Operator (Day / Night / Home):</span>
+                  <div className="flex gap-2">
                     <select 
-                      value={coGamerId} 
-                      onChange={(e) => setCoGamerId(e.target.value)}
-                      className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer"
+                      value={selectedRunnerToAdd}
+                      onChange={(e) => setSelectedRunnerToAdd(e.target.value)}
+                      className="flex-1 bg-slate-950 border border-cyber-border rounded px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer text-xs"
                     >
-                      <option value="" disabled>Select co-runner...</option>
+                      <option value="">Select operator to add...</option>
                       {filteredGamersForSelect
-                        .filter(g => g.gamer_role !== 'technical_manager' && g.id !== gamerId)
+                        .filter(g => g.gamer_role !== 'technical_manager' && !assignedGamerIds.includes(g.id))
                         .map(g => (
                           <option key={g.id} value={g.id}>{g.name} (ID: {g.employee_id})</option>
                         ))
                       }
                     </select>
-                    <div className="text-[10px] text-cyber-green bg-cyber-green/5 p-2 rounded border border-cyber-green/20">
-                      ⚡ <strong>50/50 Shared Split:</strong> {sizeMillions}M will be split as <strong>{sizeMillions / 2}M ({Math.floor((sizeMillions / 2) / 10)} orders)</strong> to each runner.
-                      {sizeMillions > 100 && (
-                        <span className="block mt-0.5 text-slate-300">
-                          Each 100M milestone hit awards <strong>5 completed orders (50M)</strong> to each runner.
-                        </span>
-                      )}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddRunner}
+                      disabled={!selectedRunnerToAdd}
+                      className="flex items-center gap-1 bg-cyber-green/20 hover:bg-cyber-green text-cyber-green hover:text-slate-950 border border-cyber-green/40 px-3 py-1.5 rounded font-bold uppercase transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer text-xs"
+                    >
+                      <UserPlus size={13} /> Add
+                    </button>
                   </div>
-                )}
+                  <p className="text-[9px] text-slate-400 leading-relaxed">
+                    💡 <em>Pro-tip:</em> When multiple operators are assigned, you can log the exact daily volumes made by each runner on day, night, or home shifts. Completed order units and payouts will accurately reflect each operator&apos;s real contributions.
+                  </p>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -535,123 +678,365 @@ export default function OrdersTab() {
                 </div>
               </div>
 
-              {/* Large Order (>100M) Milestone Progress Tracker */}
-              {sizeMillions > 100 && (
-                <div className="p-3 bg-slate-900/60 rounded border border-cyber-cyan/30 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-cyber-cyan uppercase font-bold text-[11px]">
-                      Large Order Milestone Progress (Hit every 100M)
-                    </label>
-                    <span className="text-[10px] text-cyber-green font-bold">
-                      {Math.floor(progressMillions / 100) * 10} / {Math.floor(sizeMillions / 10)} Orders Credited
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="number" 
-                      min="0"
-                      max={sizeMillions}
-                      step="10"
-                      value={progressMillions}
-                      onChange={(e) => setProgressMillions(Math.min(sizeMillions, Math.max(0, Number(e.target.value))))}
-                      className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyber-cyan"
-                      placeholder="Progress in Millions (e.g. 100, 200, 300)"
-                    />
-                    <span className="text-xs text-slate-400 font-bold">M</span>
-                  </div>
-                  <p className="text-[9px] text-slate-400">
-                    Each completed 100M milestone adds 10 completed orders (in 10M chunks). Full order adds {Math.floor(sizeMillions / 10)} orders upon completion.
-                  </p>
-                </div>
-              )}
-
-              {/* Small Order (<=100M) Info Note */}
-              {sizeMillions <= 100 && (
-                <div className="text-[10px] text-slate-400 px-1 font-mono">
-                  Standard Order: {Math.floor(sizeMillions / 10)} completed orders (in 10M chunks) credited when marked Completed.
-                </div>
-              )}
-
-              {/* Payout */}
-              <div className="space-y-1">
+              {/* Progress Tracker Override */}
+              <div className="p-3 bg-slate-900/60 rounded border border-cyber-border/40 space-y-2">
                 <div className="flex justify-between items-center">
-                  <label className="text-slate-400 uppercase tracking-wider">Payout Amount (K)</label>
-                  <div className="flex items-center gap-1">
-                    <input 
-                      type="checkbox" 
-                      id="override" 
-                      checked={isPayoutOverridden} 
-                      onChange={(e) => {
-                        setIsPayoutOverridden(e.target.checked);
-                        if (!e.target.checked) setPayout(sizeMillions);
-                      }}
-                      className="cursor-pointer"
-                    />
-                    <label htmlFor="override" className="text-[10px] text-slate-500 cursor-pointer select-none">Override</label>
-                  </div>
+                  <label className="text-slate-300 uppercase font-bold text-[10px]">
+                    Volume Farmed Progress (Millions)
+                  </label>
+                  <span className="text-[10px] text-cyber-cyan font-bold">
+                    {progressMillions}M / {sizeMillions}M ({Math.max(0, sizeMillions - progressMillions)}M Left)
+                  </span>
                 </div>
-                <input 
-                  type="number" 
-                  value={payout || ''}
-                  onChange={(e) => setPayout(Number(e.target.value))}
-                  disabled={!isPayoutOverridden}
-                  className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-cyber-cyan disabled:opacity-50"
-                />
-                <div className="text-[10px] text-slate-500 mt-0.5">Calculated: K{sizeMillions} (K1 per 1M)</div>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="number" 
+                    min="0"
+                    max={sizeMillions * 2}
+                    step="5"
+                    value={progressMillions}
+                    onChange={(e) => setProgressMillions(Math.max(0, Number(e.target.value)))}
+                    className="w-full bg-slate-950 border border-cyber-border rounded px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyber-cyan"
+                    placeholder="Total volume farmed so far"
+                  />
+                  <span className="text-xs text-slate-400 font-bold">M</span>
+                </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-3">
-                <button 
-                  type="button"
-                  onClick={() => setIsFormOpen(false)}
-                  className="px-4 py-2 border border-slate-700 text-slate-400 rounded hover:bg-slate-900 cursor-pointer"
-                >
-                  ABORT MISSION
-                </button>
-                <button 
-                  type="submit"
-                  className="px-4 py-2 bg-cyber-cyan text-slate-950 font-bold rounded hover:bg-cyan-400 transition-colors shadow-neon-cyan/20 cursor-pointer"
-                >
-                  {isEditing ? 'COMMIT UPDATE' : 'DEPLOY NOW'}
-                </button>
+              {/* Payout & Actions */}
+              <div className="flex items-center justify-between pt-2">
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase block">Total Order Payout</span>
+                  <span className="text-base font-bold text-cyber-green">K{payout}</span>
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    type="button" 
+                    onClick={() => setIsFormOpen(false)}
+                    className="px-4 py-2 border border-cyber-border rounded hover:bg-slate-800 transition-colors uppercase cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="bg-cyber-cyan text-slate-950 font-bold px-5 py-2 rounded hover:bg-cyan-400 shadow-neon-cyan/20 transition-all uppercase tracking-wider cursor-pointer"
+                  >
+                    {isEditing ? 'Save Changes' : 'Confirm Deployment'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Grid wrapper for two-column desktop view */}
+      {/* Daily Volume & Shift Progress Logging Modal */}
+      {activeLogOrder && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="tactical-panel p-6 rounded clip-corners border border-cyber-cyan/50 w-full max-w-2xl relative my-8 font-mono text-xs">
+            <div className="hud-grid"></div>
+
+            {/* Modal Header */}
+            <div className="flex justify-between items-start border-b border-cyber-cyan/30 pb-3 mb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-cyber-cyan font-black text-sm uppercase tracking-wider">
+                    [Daily Volume &amp; Shift Log]
+                  </span>
+                  <span className="bg-cyber-cyan/20 text-cyber-cyan border border-cyber-cyan/40 px-2 py-0.5 rounded text-[10px] font-bold">
+                    {activeLogOrder.order_number}
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  Record daily volumes made by employees on Day Shift, Night Shift, or Home/Mobile sessions.
+                </p>
+              </div>
+              <button 
+                onClick={() => setActiveLogOrder(null)} 
+                className="text-slate-400 hover:text-slate-200 transition-colors p-1"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Order Progress Status Bar */}
+            {(() => {
+              const summary = getOrderProgressSummary(activeLogOrder);
+              const runners = getOrderRunners(activeLogOrder);
+              return (
+                <div className="space-y-4">
+                  {/* Progress Header Card */}
+                  <div className="p-3 bg-slate-900/80 rounded border border-cyber-border/60 space-y-2">
+                    <div className="flex justify-between items-center text-xs">
+                      <div>
+                        <span className="text-slate-400 uppercase text-[10px]">Total Farmed So Far: </span>
+                        <span className="text-cyber-green font-bold text-sm">{formatM(summary.totalMade)}M</span>
+                        <span className="text-slate-500 text-[10px]"> / {formatM(activeLogOrder.size_millions)}M Target</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 uppercase text-[10px]">Remaining: </span>
+                        <span className={`font-bold text-sm ${summary.remaining > 0 ? 'text-cyber-amber' : 'text-cyber-green'}`}>
+                          {formatM(summary.remaining)}M
+                        </span>
+                        <span className="text-cyber-cyan text-[10px] ml-1.5 font-bold">({summary.percentage}%)</span>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden border border-cyber-border/40">
+                      <div 
+                        className="bg-gradient-to-r from-cyber-cyan via-cyan-400 to-cyber-green h-full transition-all duration-300"
+                        style={{ width: `${Math.min(100, summary.percentage)}%` }}
+                      ></div>
+                    </div>
+
+                    {/* Per-Employee Summary Cards */}
+                    <div className="pt-2 border-t border-cyber-border/30">
+                      <span className="text-[10px] text-slate-400 block uppercase mb-1.5 font-bold">
+                        👥 Volume Contribution by Operator:
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {runners.map(rId => {
+                          const gamer = gamers.find(g => g.id === rId);
+                          const stats = summary.gamerTotals[rId] || { volume: 0, dayVolume: 0, nightVolume: 0, homeVolume: 0, logsCount: 0 };
+                          const unitsCredited = Math.floor(stats.volume / 10);
+                          return (
+                            <div key={rId} className="p-2 bg-slate-950/70 rounded border border-cyber-border/40 space-y-1">
+                              <div className="flex justify-between items-center">
+                                <span className="font-bold text-slate-200">{gamer?.name || 'Unknown'}</span>
+                                <span className="text-cyber-green font-bold">{formatM(stats.volume)}M made</span>
+                              </div>
+                              <div className="flex items-center justify-between text-[10px] text-slate-400">
+                                <span>ID: {gamer?.employee_id}</span>
+                                <span className="text-cyber-cyan font-bold">({unitsCredited} Orders / units)</span>
+                              </div>
+                              <div className="flex flex-wrap gap-1 text-[9px] pt-1 border-t border-slate-900">
+                                {stats.dayVolume > 0 && (
+                                  <span className="text-amber-400 flex items-center gap-0.5">
+                                    <Sun size={9} /> {formatM(stats.dayVolume)}M
+                                  </span>
+                                )}
+                                {stats.nightVolume > 0 && (
+                                  <span className="text-indigo-300 flex items-center gap-0.5">
+                                    <Moon size={9} /> {formatM(stats.nightVolume)}M
+                                  </span>
+                                )}
+                                {stats.homeVolume > 0 && (
+                                  <span className="text-emerald-300 flex items-center gap-0.5">
+                                    <Home size={9} /> {formatM(stats.homeVolume)}M
+                                  </span>
+                                )}
+                                {stats.volume === 0 && (
+                                  <span className="text-slate-600 italic">No volume logged yet</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Add New Daily Volume Log Form */}
+                  <form onSubmit={handleAddDailyProgress} className="p-4 bg-slate-900/60 rounded border border-cyber-cyan/30 space-y-3">
+                    <div className="flex items-center justify-between border-b border-cyber-border/30 pb-1.5">
+                      <span className="text-cyber-cyan font-bold uppercase text-[11px] flex items-center gap-1.5">
+                        <Sparkles size={13} /> Record Volume Made on This Order
+                      </span>
+                    </div>
+
+                    {logError && (
+                      <div className="p-2 border border-cyber-red/30 bg-cyber-red/10 text-cyber-red rounded text-[11px]">
+                        {logError}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* Operator Select */}
+                      <div className="space-y-1">
+                        <label className="text-slate-400 uppercase text-[10px] block">Operator</label>
+                        <select
+                          value={logGamerId}
+                          onChange={(e) => setLogGamerId(e.target.value)}
+                          className="w-full bg-slate-950 border border-cyber-border rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer text-xs"
+                        >
+                          {runners.map(rId => {
+                            const gamer = gamers.find(g => g.id === rId);
+                            return (
+                              <option key={rId} value={rId}>
+                                {gamer?.name || 'Unknown'} (ID: {gamer?.employee_id})
+                              </option>
+                            );
+                          })}
+                          {/* Allow picking another gamer if not in runners list */}
+                          {filteredGamersForSelect
+                            .filter(g => !runners.includes(g.id) && g.gamer_role !== 'technical_manager')
+                            .map(g => (
+                              <option key={g.id} value={g.id}>
+                                + {g.name} (Assisting - ID: {g.employee_id})
+                              </option>
+                            ))
+                          }
+                        </select>
+                      </div>
+
+                      {/* Date */}
+                      <div className="space-y-1">
+                        <label className="text-slate-400 uppercase text-[10px] block">Date</label>
+                        <input
+                          type="date"
+                          value={logDate}
+                          onChange={(e) => setLogDate(e.target.value)}
+                          className="w-full bg-slate-950 border border-cyber-border rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-cyber-cyan text-xs"
+                        />
+                      </div>
+
+                      {/* Shift Type */}
+                      <div className="space-y-1">
+                        <label className="text-slate-400 uppercase text-[10px] block">Shift</label>
+                        <select
+                          value={logShift}
+                          onChange={(e) => setLogShift(e.target.value as ShiftType)}
+                          className="w-full bg-slate-950 border border-cyber-border rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer text-xs"
+                        >
+                          <option value="day">☀️ Day Shift</option>
+                          <option value="night">🌙 Night Shift</option>
+                          <option value="home">🏠 Home / Mobile</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* Volume in Millions */}
+                      <div className="space-y-1">
+                        <label className="text-slate-400 uppercase text-[10px] block">Volume Made (M)</label>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="0.1"
+                            value={logVolume}
+                            onChange={(e) => setLogVolume(e.target.value)}
+                            placeholder="e.g. 15 or 25.5"
+                            className="w-full bg-slate-950 border border-cyber-border rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-cyber-cyan text-xs"
+                          />
+                          <span className="text-xs text-slate-400 font-bold">M</span>
+                        </div>
+                      </div>
+
+                      {/* Notes / Device / Shift details */}
+                      <div className="sm:col-span-2 space-y-1">
+                        <label className="text-slate-400 uppercase text-[10px] block">Notes (Optional)</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={logNotes}
+                            onChange={(e) => setLogNotes(e.target.value)}
+                            placeholder="e.g. Phone #3 took home, completed chapter 8"
+                            className="flex-1 bg-slate-950 border border-cyber-border rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-cyber-cyan text-xs"
+                          />
+                          <button
+                            type="submit"
+                            disabled={logSubmitting || !logVolume}
+                            className="bg-cyber-cyan text-slate-950 font-bold px-3 py-1.5 rounded hover:bg-cyan-400 transition-all uppercase tracking-wider text-xs whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                          >
+                            {logSubmitting ? 'Saving...' : '+ Save Log'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </form>
+
+                  {/* Volume Logs History Table */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block">
+                      📜 Logged Progress History ({activeLogOrder.daily_progress?.length || 0} entries):
+                    </span>
+
+                    {(!activeLogOrder.daily_progress || activeLogOrder.daily_progress.length === 0) ? (
+                      <div className="p-4 bg-slate-950/40 rounded border border-cyber-border/30 text-center text-slate-500 italic">
+                        No individual daily volume logs recorded yet for this order. Use the form above to record shift contributions.
+                      </div>
+                    ) : (
+                      <div className="max-h-60 overflow-y-auto rounded border border-cyber-border/40">
+                        <table className="w-full text-left">
+                          <thead className="bg-slate-950 text-slate-400 uppercase text-[9px] border-b border-cyber-border/40 sticky top-0">
+                            <tr>
+                              <th className="p-2">Date</th>
+                              <th className="p-2">Operator</th>
+                              <th className="p-2">Shift</th>
+                              <th className="p-2 text-right">Volume</th>
+                              <th className="p-2">Notes</th>
+                              <th className="p-2 text-center">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-cyber-border/20 text-xs">
+                            {activeLogOrder.daily_progress.map(log => {
+                              const gamer = gamers.find(g => g.id === log.gamer_id);
+                              return (
+                                <tr key={log.id} className="hover:bg-slate-900/50">
+                                  <td className="p-2 font-mono text-slate-300">{log.date}</td>
+                                  <td className="p-2">
+                                    <div className="font-bold text-slate-200">{gamer?.name || 'Unknown'}</div>
+                                    <div className="text-[9px] text-slate-500">ID: {gamer?.employee_id}</div>
+                                  </td>
+                                  <td className="p-2">{getShiftBadge(log.shift)}</td>
+                                  <td className="p-2 text-right font-bold text-cyber-green">{formatM(log.volume_millions)}M</td>
+                                  <td className="p-2 text-slate-400 text-[10px] max-w-[150px] truncate">{log.notes || '-'}</td>
+                                  <td className="p-2 text-center">
+                                    {isManager && (
+                                      <button
+                                        onClick={() => handleDeleteLogEntry(log.id)}
+                                        title="Delete log entry"
+                                        className="text-slate-500 hover:text-cyber-red p-1 transition-colors"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Main Order View & Standby Panel */}
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
         
-        {/* Main Orders Table (3/4 width) */}
-        <div className="xl:col-span-3 space-y-6">
-          {/* Orders Table Container */}
-          <div className="tactical-panel p-5 rounded clip-corners border border-cyber-border/40 overflow-hidden">
+        {/* Orders Table Panel */}
+        <div className="xl:col-span-3">
+          <div className="tactical-panel p-4 rounded clip-corners border border-cyber-border/40 font-mono text-xs">
             {filteredOrders.length === 0 ? (
-              <div className="py-16 text-center font-mono text-slate-500 text-xs">
-                NO ORDERS FOUND MATCHING CURRENT FILTERS.
+              <div className="p-10 text-center text-slate-500">
+                <Gamepad2 size={36} className="mx-auto mb-2 opacity-30 text-cyber-cyan" />
+                <p>No operational orders found matching the filter criteria.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full font-mono text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-cyber-border text-slate-400 bg-cyber-dark/40 select-none">
+                <table className="w-full text-left">
+                  <thead className="border-b border-cyber-border/50 text-slate-400 uppercase text-[10px]">
+                    <tr>
                       <th 
                         className="p-3 cursor-pointer hover:text-cyber-cyan transition-colors"
                         onClick={() => toggleSort('order_number')}
                       >
-                        Order Code {sortBy === 'order_number' && (sortDirection === 'asc' ? '▲' : '▼')}
+                        Order ID {sortBy === 'order_number' && (sortDirection === 'asc' ? '▲' : '▼')}
                       </th>
-                      {isManager ? (
-                        <th className="p-3">Gamer Details</th>
-                      ) : (
-                        <th className="p-3">Mission Type / Partner</th>
-                      )}
+                      <th className="p-3">Assigned Operators</th>
                       <th 
-                        className="p-3 text-right cursor-pointer hover:text-cyber-cyan transition-colors"
+                        className="p-3 cursor-pointer hover:text-cyber-cyan transition-colors"
                         onClick={() => toggleSort('size')}
                       >
-                        Size &amp; Quota {sortBy === 'size' && (sortDirection === 'asc' ? '▲' : '▼')}
+                        Progress &amp; Quota {sortBy === 'size' && (sortDirection === 'asc' ? '▲' : '▼')}
                       </th>
                       <th 
                         className="p-3 text-right cursor-pointer hover:text-cyber-cyan transition-colors"
@@ -666,105 +1051,125 @@ export default function OrdersTab() {
                         Deployed On {sortBy === 'date' && (sortDirection === 'asc' ? '▲' : '▼')}
                       </th>
                       <th className="p-3">Status</th>
-                      {isManager && <th className="p-3 text-center">Operational Shifts</th>}
+                      <th className="p-3 text-center">Volume Logs &amp; Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-cyber-border/30">
                     {filteredOrders.map((order) => {
-                      const assignedGamer = gamers.find(g => g.id === order.gamer_id);
-                      const coGamer = order.co_gamer_id ? gamers.find(g => g.id === order.co_gamer_id) : null;
-                      const isDual = !!order.co_gamer_id;
-                      const effectivePayout = isDual ? Number(order.payout || 0) / 2 : Number(order.payout || 0);
+                      const runners = getOrderRunners(order);
+                      const runnerGamers = runners.map(id => gamers.find(g => g.id === id)).filter(Boolean);
+                      const isMulti = runners.length > 1;
+                      const summary = getOrderProgressSummary(order);
+
+                      // Calculate gamer effective payout
+                      let effectivePayout = order.payout;
+                      if (!isManager && gamerProfile) {
+                        if (summary.totalMade > 0 && summary.gamerTotals[gamerProfile.id]) {
+                          const gamerVol = summary.gamerTotals[gamerProfile.id].volume;
+                          effectivePayout = Math.round((gamerVol / order.size_millions) * order.payout);
+                        } else if (isMulti) {
+                          effectivePayout = Math.round(order.payout / runners.length);
+                        }
+                      }
 
                       return (
                         <tr key={order.id} className="hover:bg-slate-900/30 transition-colors">
+                          {/* Order Number */}
                           <td className="p-3 text-cyber-cyan font-bold">
-                            {isManager ? (
-                              <button
-                                onClick={() => openEditOrderForm(order)}
-                                title="Click to edit Order parameters and Order Number"
-                                className="text-left hover:text-white hover:underline transition-all inline-flex items-center gap-1 group cursor-pointer"
-                              >
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {isManager ? (
+                                <button
+                                  onClick={() => openEditOrderForm(order)}
+                                  title="Click to edit Order parameters and Order Number"
+                                  className="text-left hover:text-white hover:underline transition-all inline-flex items-center gap-1 group cursor-pointer"
+                                >
+                                  <span>{order.order_number}</span>
+                                  <Edit3 size={10} className="opacity-0 group-hover:opacity-100 text-cyber-cyan transition-opacity" />
+                                </button>
+                              ) : (
                                 <span>{order.order_number}</span>
-                                <Edit3 size={10} className="opacity-0 group-hover:opacity-100 text-cyber-cyan transition-opacity" />
-                              </button>
-                            ) : (
-                              <span>{order.order_number}</span>
-                            )}
-                            {coGamer && (
-                              <span className="text-[8px] text-cyber-green bg-cyber-green/10 border border-cyber-green/30 px-1 py-0.5 rounded ml-1.5 uppercase font-mono inline-block">
-                                50/50 Dual
-                              </span>
-                            )}
-                          </td>
-                          {isManager ? (
-                            <td className="p-3">
-                              <div className="font-bold text-slate-300">
-                                {assignedGamer ? assignedGamer.name : 'Unknown Gamer'}
-                                {coGamer && (
-                                  <span className="text-cyber-green font-bold"> &amp; {coGamer.name}</span>
-                                )}
-                              </div>
-                              <div className="text-[10px] text-slate-500 font-mono">
-                                {assignedGamer ? `ID: ${assignedGamer.employee_id}` : ''}
-                                {coGamer ? ` | ID: ${coGamer.employee_id}` : ''}
-                              </div>
-                            </td>
-                          ) : (
-                            <td className="p-3">
-                              {isDual ? (
-                                <div>
-                                  <span className="text-cyber-green font-bold text-[11px] block">⚡ 50/50 Shared Mission</span>
-                                  <span className="text-[10px] text-slate-400">
-                                    Partner: {order.gamer_id === gamerProfile?.id ? (coGamer?.name || 'Co-Runner') : (assignedGamer?.name || 'Primary Runner')}
-                                  </span>
-                                </div>
-                              ) : (
-                                <span className="text-[11px] text-slate-400 uppercase">Solo Assignment</span>
                               )}
-                            </td>
-                          )}
-                          <td className="p-3 text-right font-bold text-slate-300">
-                            {isDual ? (
-                              <>
-                                <div>{formatM(order.size_millions / 2)}M <span className="text-[9px] text-slate-400 font-normal">my share ({formatM(order.size_millions)}M total)</span></div>
-                              </>
-                            ) : (
-                              <div>{formatM(order.size_millions)}M</div>
-                            )}
-                            <span className="text-[9px] text-cyber-cyan font-bold block">
-                              {order.co_gamer_id ? (
-                                order.size_millions > 100 ? (
-                                  order.status === 'Completed' 
-                                    ? `${Math.floor(order.size_millions / 20)} Orders each (300M each)` 
-                                    : `${Math.floor((order.progress_millions || 0) / 100) * 5}/${Math.floor(order.size_millions / 20)} Orders each (${order.progress_millions || 0}M hit)`
-                                ) : (
-                                  `${Math.floor(order.size_millions / 20)} Orders each (${order.size_millions / 2}M each)`
-                                )
-                              ) : (
-                                order.size_millions > 100 ? (
-                                  order.status === 'Completed' 
-                                    ? `${Math.floor(order.size_millions / 10)} Orders (Full)` 
-                                    : `${Math.floor((order.progress_millions || 0) / 100) * 10}/${Math.floor(order.size_millions / 10)} Orders (${order.progress_millions || 0}M hit)`
-                                ) : (
-                                  `${Math.floor(order.size_millions / 10)} Orders (10M/unit)`
-                                )
+                              {isMulti && (
+                                <span className="text-[8px] text-cyber-green bg-cyber-green/10 border border-cyber-green/30 px-1 py-0.5 rounded uppercase font-mono">
+                                  {runners.length} Runners
+                                </span>
                               )}
+                            </div>
+                            <span className="text-[9px] text-slate-500 font-normal block mt-0.5">
+                              {order.asset_type || 'Haval Coins'}
                             </span>
-                            <span className="text-[9px] text-slate-500 font-normal block">{order.asset_type || 'Haval Coins'}</span>
                           </td>
+
+                          {/* Assigned Operators */}
+                          <td className="p-3">
+                            <div className="space-y-1">
+                              {runnerGamers.map((gamer, i) => {
+                                if (!gamer) return null;
+                                const gamerVol = summary.gamerTotals[gamer.id]?.volume || 0;
+                                const isLead = i === 0;
+                                return (
+                                  <div key={gamer.id} className="flex items-center gap-1.5 text-xs">
+                                    <span className={`font-bold ${isLead ? 'text-slate-200' : 'text-slate-400'}`}>
+                                      {gamer.name}
+                                    </span>
+                                    <span className="text-[9px] text-slate-500 font-mono">ID:{gamer.employee_id}</span>
+                                    {gamerVol > 0 && (
+                                      <span className="text-[9px] text-cyber-cyan font-bold bg-cyber-cyan/10 px-1 rounded border border-cyber-cyan/20">
+                                        {formatM(gamerVol)}M
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                              {runnerGamers.length === 0 && (
+                                <span className="text-slate-500 italic">No operators assigned</span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Progress & Quota */}
+                          <td className="p-3">
+                            <div className="space-y-1">
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="font-bold text-slate-200">
+                                  {formatM(summary.totalMade)}M <span className="text-[9px] text-slate-400 font-normal">/ {formatM(order.size_millions)}M</span>
+                                </span>
+                                <span className={`text-[10px] font-bold ${summary.remaining > 0 ? 'text-cyber-amber' : 'text-cyber-green'}`}>
+                                  {summary.remaining > 0 ? `${formatM(summary.remaining)}M left` : 'Completed'}
+                                </span>
+                              </div>
+
+                              {/* Progress bar */}
+                              <div className="w-36 bg-slate-950 rounded-full h-1.5 overflow-hidden border border-cyber-border/40">
+                                <div 
+                                  className="bg-gradient-to-r from-cyber-cyan to-cyber-green h-full"
+                                  style={{ width: `${Math.min(100, summary.percentage)}%` }}
+                                ></div>
+                              </div>
+
+                              <span className="text-[9px] text-slate-500 font-mono block">
+                                {Math.floor(order.size_millions / 10)} Orders target (10M/unit)
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* Payout */}
                           <td className="p-3 text-right font-bold text-cyber-green">
                             K{isManager ? order.payout : effectivePayout}
-                            {isDual && !isManager && (
-                              <span className="text-[8px] text-slate-500 font-normal block">(50% of K{order.payout})</span>
+                            {isMulti && !isManager && (
+                              <span className="text-[8px] text-slate-500 font-normal block">(Individual Share)</span>
                             )}
                             {order.payout !== order.size_millions && isManager && (
                               <span className="text-[8px] text-cyber-cyan font-bold block">(Override)</span>
                             )}
                           </td>
-                          <td className="p-3 text-slate-400">
+
+                          {/* Deployment Date */}
+                          <td className="p-3 text-slate-400 text-[11px]">
                             {new Date(order.start_date).toLocaleDateString()} {new Date(order.start_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </td>
+
+                          {/* Status Badge */}
                           <td className="p-3">
                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                               order.status === 'Running' ? 'bg-cyber-cyan/15 text-cyber-cyan border border-cyber-cyan/30' :
@@ -777,72 +1182,86 @@ export default function OrdersTab() {
                               {order.status}
                             </span>
                           </td>
-                          {isManager && (
-                            <td className="p-3">
-                              <div className="flex items-center justify-center gap-1.5">
-                                {/* Quick Transitions */}
-                                <div className="flex gap-0.5 border border-cyber-border/40 rounded p-0.5 bg-slate-950/80">
-                                  <button 
-                                    onClick={() => updateOrderStatus(order.id, 'Running')}
-                                    title="Set Running"
-                                    className={`p-1 rounded transition-colors ${order.status === 'Running' ? 'bg-cyber-cyan text-slate-950' : 'text-slate-400 hover:text-cyber-cyan'}`}
-                                  >
-                                    <Play size={10} />
-                                  </button>
-                                  <button 
-                                    onClick={() => updateOrderStatus(order.id, 'Paused')}
-                                    title="Set Paused"
-                                    className={`p-1 rounded transition-colors ${order.status === 'Paused' ? 'bg-cyber-amber text-slate-950' : 'text-slate-400 hover:text-cyber-amber'}`}
-                                  >
-                                    <Pause size={10} />
-                                  </button>
-                                  <button 
-                                    onClick={() => updateOrderStatus(order.id, 'Completed')}
-                                    title="Set Completed"
-                                    className={`p-1 rounded transition-colors ${order.status === 'Completed' ? 'bg-cyber-green text-slate-950' : 'text-slate-400 hover:text-cyber-green'}`}
-                                  >
-                                    <CheckCircle size={10} />
-                                  </button>
-                                  <button 
-                                    onClick={() => updateOrderStatus(order.id, 'Violation')}
-                                    title="Set Violation"
-                                    className={`p-1 rounded transition-colors ${order.status === 'Violation' ? 'bg-cyber-red text-slate-950 font-bold' : 'text-slate-400 hover:text-cyber-red'}`}
-                                  >
-                                    <AlertTriangle size={10} />
-                                  </button>
-                                  {role === 'admin' && (
-                                    <button 
-                                      onClick={() => updateOrderStatus(order.id, 'Cancelled')}
-                                      title="Set Cancelled"
-                                      className={`p-1 rounded transition-colors ${order.status === 'Cancelled' ? 'bg-slate-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-500'}`}
-                                    >
-                                      <XCircle size={10} />
-                                    </button>
-                                  )}
-                                </div>
 
-                                {/* Full Edit / Delete */}
-                                <div className="flex gap-1 pl-1 border-l border-cyber-border/30">
-                                  <button 
-                                    onClick={() => openEditOrderForm(order)}
-                                    title="Edit Order parameters"
-                                    className="p-1.5 hover:bg-cyber-cyan/15 rounded text-slate-400 hover:text-cyber-cyan transition-colors"
-                                  >
-                                    <Edit3 size={11} />
-                                  </button>
-                                  {role === 'admin' && (
+                          {/* Volume Logs Button & Actions */}
+                          <td className="p-3">
+                            <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                              {/* Log Volume Action Button */}
+                              <button
+                                onClick={() => openDailyLogModal(order)}
+                                title="Open Daily Volume & Shift Progress Logger"
+                                className="flex items-center gap-1 text-[10px] bg-cyber-cyan/15 hover:bg-cyber-cyan/30 text-cyber-cyan border border-cyber-cyan/35 px-2 py-1 rounded transition-all cursor-pointer font-bold"
+                              >
+                                <BarChart3 size={11} />
+                                <span>Logs ({order.daily_progress?.length || 0})</span>
+                              </button>
+
+                              {isManager && (
+                                <>
+                                  {/* Quick Transitions */}
+                                  <div className="flex gap-0.5 border border-cyber-border/40 rounded p-0.5 bg-slate-950/80">
                                     <button 
-                                      onClick={() => handleDelete(order.id)}
-                                      title="Terminate Log"
-                                      className="p-1.5 hover:bg-cyber-red/15 rounded text-slate-400 hover:text-cyber-red transition-colors"
+                                      onClick={() => updateOrderStatus(order.id, 'Running')}
+                                      title="Set Running"
+                                      className={`p-1 rounded transition-colors ${order.status === 'Running' ? 'bg-cyber-cyan text-slate-950' : 'text-slate-400 hover:text-cyber-cyan'}`}
                                     >
-                                      <Trash2 size={11} />
+                                      <Play size={10} />
                                     </button>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                          )}
+                                    <button 
+                                      onClick={() => updateOrderStatus(order.id, 'Paused')}
+                                      title="Set Paused"
+                                      className={`p-1 rounded transition-colors ${order.status === 'Paused' ? 'bg-cyber-amber text-slate-950' : 'text-slate-400 hover:text-cyber-amber'}`}
+                                    >
+                                      <Pause size={10} />
+                                    </button>
+                                    <button 
+                                      onClick={() => updateOrderStatus(order.id, 'Completed')}
+                                      title="Set Completed"
+                                      className={`p-1 rounded transition-colors ${order.status === 'Completed' ? 'bg-cyber-green text-slate-950' : 'text-slate-400 hover:text-cyber-green'}`}
+                                    >
+                                      <CheckCircle size={10} />
+                                    </button>
+                                    <button 
+                                      onClick={() => updateOrderStatus(order.id, 'Violation')}
+                                      title="Set Violation"
+                                      className={`p-1 rounded transition-colors ${order.status === 'Violation' ? 'bg-cyber-red text-slate-950 font-bold' : 'text-slate-400 hover:text-cyber-red'}`}
+                                    >
+                                      <AlertTriangle size={10} />
+                                    </button>
+                                    {role === 'admin' && (
+                                      <button 
+                                        onClick={() => updateOrderStatus(order.id, 'Cancelled')}
+                                        title="Set Cancelled"
+                                        className={`p-1 rounded transition-colors ${order.status === 'Cancelled' ? 'bg-slate-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-500'}`}
+                                      >
+                                        <XCircle size={10} />
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {/* Full Edit / Delete */}
+                                  <div className="flex gap-1 pl-1 border-l border-cyber-border/30">
+                                    <button 
+                                      onClick={() => openEditOrderForm(order)}
+                                      title="Edit Order parameters"
+                                      className="p-1.5 hover:bg-cyber-cyan/15 rounded text-slate-400 hover:text-cyber-cyan transition-colors"
+                                    >
+                                      <Edit3 size={11} />
+                                    </button>
+                                    {role === 'admin' && (
+                                      <button 
+                                        onClick={() => handleDelete(order.id)}
+                                        title="Terminate Log"
+                                        className="p-1.5 hover:bg-cyber-red/15 rounded text-slate-400 hover:text-cyber-red transition-colors"
+                                      >
+                                        <Trash2 size={11} />
+                                      </button>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
@@ -877,8 +1296,7 @@ export default function OrdersTab() {
                         <div 
                           key={r.gamer.id} 
                           onClick={() => {
-                            setGamerId(r.gamer.id);
-                            // Set default deployment date on form open
+                            setAssignedGamerIds([r.gamer.id]);
                             const now = new Date();
                             now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
                             setOrderNumber('');

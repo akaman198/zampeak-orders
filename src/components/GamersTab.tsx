@@ -1,7 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useApp, getPayPeriodLabel } from '../context/AppContext';
+import { 
+  useApp, 
+  getPayPeriodLabel, 
+  isGamerOnOrder, 
+  getOrderRunners, 
+  getOrderProgressSummary 
+} from '../context/AppContext';
 import { Gamer, GamerLevel, GamerRole } from '../types';
 import { 
   UserPlus, 
@@ -188,16 +194,31 @@ export default function GamersTab() {
   };
 
   const getGamerProfileMetrics = (gamerId: string) => {
-    // Match orders where gamer is primary runner or co-runner
-    const gamerOrders = orders.filter(o => o.gamer_id === gamerId || o.co_gamer_id === gamerId);
+    // Match orders where gamer is assigned or contributed daily volume
+    const gamerOrders = orders.filter(o => isGamerOnOrder(o, gamerId));
     const completed = gamerOrders.filter(o => o.status === 'Completed');
     const running = gamerOrders.filter(o => o.status === 'Running').length;
     const paused = gamerOrders.filter(o => o.status === 'Paused').length;
     const violation = gamerOrders.filter(o => o.status === 'Violation').length;
     const cancelled = gamerOrders.filter(o => o.status === 'Cancelled').length;
     
-    const assets = completed.reduce((sum, o) => sum + (o.co_gamer_id ? Number(o.size_millions || 0) / 2 : Number(o.size_millions || 0)), 0);
-    const expectedPay = completed.reduce((sum, o) => sum + (o.co_gamer_id ? Number(o.payout || 0) / 2 : Number(o.payout || 0)), 0);
+    const assets = completed.reduce((sum, o) => {
+      const summary = getOrderProgressSummary(o);
+      if (summary.gamerTotals[gamerId]) {
+        return sum + summary.gamerTotals[gamerId].volume;
+      }
+      const runners = getOrderRunners(o);
+      return sum + (runners.length > 0 ? Number(o.size_millions || 0) / runners.length : Number(o.size_millions || 0));
+    }, 0);
+
+    const expectedPay = completed.reduce((sum, o) => {
+      const summary = getOrderProgressSummary(o);
+      if (summary.gamerTotals[gamerId] && o.size_millions > 0) {
+        return sum + (summary.gamerTotals[gamerId].volume / o.size_millions) * Number(o.payout || 0);
+      }
+      const runners = getOrderRunners(o);
+      return sum + (runners.length > 0 ? Number(o.payout || 0) / runners.length : Number(o.payout || 0));
+    }, 0);
     
     // Calculate Net Expected Pay and 26-Order Target for the current cycle
     const currentCycle = getPayPeriodLabel(new Date().toISOString());
@@ -972,36 +993,40 @@ export default function GamersTab() {
                             </thead>
                             <tbody className="divide-y divide-cyber-border/20 text-slate-300">
                               {metrics.orders.map(order => {
-                                const isDual = !!order.co_gamer_id;
-                                const isPrimary = order.gamer_id === selectedGamer.id;
-                                const partnerId = isPrimary ? order.co_gamer_id : order.gamer_id;
-                                const partnerGamer = partnerId ? gamers.find(g => g.id === partnerId) : null;
-                                const effectiveSize = isDual ? Number(order.size_millions || 0) / 2 : Number(order.size_millions || 0);
-                                const effectivePayout = isDual ? Number(order.payout || 0) / 2 : Number(order.payout || 0);
+                                const runners = getOrderRunners(order);
+                                const isMulti = runners.length > 1;
+                                const summary = getOrderProgressSummary(order);
+                                const gamerVol = summary.gamerTotals[selectedGamer.id]?.volume;
+                                const effectiveSize = gamerVol !== undefined ? gamerVol : (isMulti ? Number(order.size_millions || 0) / runners.length : Number(order.size_millions || 0));
+                                const effectivePayout = gamerVol !== undefined && order.size_millions > 0 
+                                  ? Math.round((gamerVol / order.size_millions) * order.payout)
+                                  : (isMulti ? Math.round(Number(order.payout || 0) / runners.length) : Number(order.payout || 0));
 
                                 return (
                                   <tr key={order.id} className="hover:bg-slate-900/40">
                                     <td className="py-2.5 font-bold text-cyber-cyan">{order.order_number}</td>
                                     <td className="py-2.5">
-                                      {isDual ? (
+                                      {isMulti ? (
                                         <div>
                                           <span className="inline-flex items-center gap-1 bg-cyber-cyan/15 text-cyber-cyan border border-cyber-cyan/30 px-1.5 py-0.5 rounded text-[8px] font-bold">
-                                            50/50 DUAL
+                                            {runners.length} RUNNERS
                                           </span>
-                                          <span className="text-[9px] text-slate-400 block mt-0.5">
-                                            Partner: {partnerGamer ? partnerGamer.name : 'Co-Runner'}
-                                          </span>
+                                          {gamerVol !== undefined && (
+                                            <span className="text-[9px] text-cyber-green block mt-0.5">
+                                              Farmed: {formatM(gamerVol)}M
+                                            </span>
+                                          )}
                                         </div>
                                       ) : (
                                         <span className="text-[9px] text-slate-500 uppercase">Solo Mission</span>
                                       )}
                                     </td>
                                     <td className="py-2.5 text-right font-bold">
-                                      {formatM(effectiveSize)}M {isDual && <span className="text-[9px] text-slate-500 font-normal">({formatM(order.size_millions)}M total)</span>}
+                                      {formatM(effectiveSize)}M {isMulti && <span className="text-[9px] text-slate-500 font-normal">({formatM(order.size_millions)}M total)</span>}
                                       <span className="text-[9px] text-slate-500 font-normal block">{order.asset_type === 'Haval Coins' ? 'Haval' : 'Assets'}</span>
                                     </td>
                                     <td className="py-2.5 text-right text-cyber-green font-bold">
-                                      K{effectivePayout} {isDual && <span className="text-[9px] text-slate-500 font-normal">(50% of K{order.payout})</span>}
+                                      K{effectivePayout}
                                     </td>
                                     <td className="py-2.5 text-slate-400">
                                       {new Date(order.start_date).toLocaleDateString()}

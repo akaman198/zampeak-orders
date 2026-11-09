@@ -3,6 +3,18 @@ export type AssetType = 'Haval Coins' | 'Total Assets';
 export type GamerLevel = 'beginner' | 'intermediate' | 'advanced';
 export type GamerRole = 'gamer' | 'team_leader' | 'technical_manager';
 export type AttendanceStatus = 'present_on_time' | 'present_late' | 'absent';
+export type ShiftType = 'day' | 'night' | 'home';
+
+export interface OrderDailyProgress {
+  id: string;
+  order_id: string;
+  gamer_id: string;
+  date: string; // YYYY-MM-DD
+  shift: ShiftType;
+  volume_millions: number;
+  notes?: string;
+  created_at?: string;
+}
 
 export interface Gamer {
   id: string;
@@ -24,6 +36,7 @@ export interface AttendanceRecord {
   gamer_id: string;
   date: string; // YYYY-MM-DD
   status: AttendanceStatus;
+  shift?: ShiftType; // 'day' | 'night' | 'home'
   farmed_millions: number;
   normal_overtime_hours?: number; // Approved Normal Overtime (1.5x rate: K5.77/hr)
   holiday_overtime_hours?: number; // Rest Day / Public Holiday Overtime (2.0x rate: K7.69/hr)
@@ -34,10 +47,12 @@ export interface AttendanceRecord {
 export interface Order {
   id: string;
   order_number: string;
-  gamer_id: string;
-  co_gamer_id?: string | null; // Secondary runner for shared 50/50 dual-player orders
+  gamer_id: string; // Primary runner
+  co_gamer_id?: string | null; // Secondary runner (kept for backwards compatibility)
+  assigned_gamer_ids?: string[]; // Multiple runners assigned to this order
   size_millions: number;
-  progress_millions?: number; // Farmed progress in Millions for large orders (>100M)
+  progress_millions?: number; // Farmed progress in Millions
+  daily_progress?: OrderDailyProgress[]; // Daily volume logs per employee and shift
   asset_type: AssetType;
   start_date: string;
   status: OrderStatus;

@@ -305,12 +305,15 @@ export default function ReportsTab() {
   const supabaseSQL = `-- =========================================================================
 -- RUN THIS IN SUPABASE SQL EDITOR TO UPDATE YOUR EXISTING TABLES
 -- =========================================================================
--- 1. Update ORDERS table for milestone progress & dual runner support
+-- 1. Update ORDERS table for multi-operator assignment, daily progress & night shift tracking
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS assigned_gamer_ids TEXT[] DEFAULT '{}';
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS daily_progress JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS progress_millions NUMERIC DEFAULT 0;
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS co_gamer_id UUID REFERENCES public.gamers(id) ON DELETE SET NULL;
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS completed_date DATE;
 
--- 2. Update ATTENDANCE table for overtime hours tracking
+-- 2. Update ATTENDANCE table for shift (day vs night) & overtime hours tracking
+ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS shift TEXT DEFAULT 'day';
 ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS normal_overtime_hours NUMERIC DEFAULT 0;
 ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS holiday_overtime_hours NUMERIC DEFAULT 0;
 
@@ -343,6 +346,8 @@ CREATE TABLE IF NOT EXISTS public.orders (
     order_number TEXT UNIQUE NOT NULL,
     gamer_id UUID REFERENCES public.gamers(id) ON DELETE RESTRICT NOT NULL,
     co_gamer_id UUID REFERENCES public.gamers(id) ON DELETE SET NULL,
+    assigned_gamer_ids TEXT[] DEFAULT '{}',
+    daily_progress JSONB DEFAULT '[]'::jsonb,
     size_millions NUMERIC NOT NULL,
     progress_millions NUMERIC DEFAULT 0,
     asset_type TEXT NOT NULL DEFAULT 'Haval Coins',
@@ -359,6 +364,7 @@ CREATE TABLE IF NOT EXISTS public.attendance (
     gamer_id UUID REFERENCES public.gamers(id) ON DELETE CASCADE NOT NULL,
     date DATE NOT NULL,
     status TEXT NOT NULL,
+    shift TEXT DEFAULT 'day',
     farmed_millions NUMERIC NOT NULL DEFAULT 0,
     normal_overtime_hours NUMERIC DEFAULT 0,
     holiday_overtime_hours NUMERIC DEFAULT 0,

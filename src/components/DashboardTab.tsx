@@ -1,7 +1,14 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useApp, getPayPeriodLabel, getOrderPeriodLabel } from '../context/AppContext';
+import { 
+  useApp, 
+  getPayPeriodLabel, 
+  getOrderPeriodLabel, 
+  getOrderRunners, 
+  getOrderProgressSummary, 
+  isGamerOnOrder 
+} from '../context/AppContext';
 import { 
   Shield, 
   Gamepad2, 
@@ -32,9 +39,9 @@ export default function DashboardTab({
   const isManager = role === 'admin' || (role === 'gamer' && gamerProfile?.gamer_role === 'technical_manager');
   const isAdminOrViewer = role === 'admin' || role === 'viewer';
 
-  // Filter orders if user is a gamer (includes shared dual orders)
+  // Filter orders if user is a gamer (includes multi-runner orders and volume-logged missions)
   const orders = role === 'gamer' && gamerProfile
-    ? allOrders.filter(o => o.gamer_id === gamerProfile.id || o.co_gamer_id === gamerProfile.id)
+    ? allOrders.filter(o => isGamerOnOrder(o, gamerProfile.id))
     : allOrders;
 
 
@@ -1167,8 +1174,10 @@ export default function DashboardTab({
               </thead>
               <tbody className="divide-y divide-cyber-border/40">
                 {recentOrders.map((order) => {
-                  const assignedGamer = gamers.find(g => g.id === order.gamer_id);
-                  const coGamer = order.co_gamer_id ? gamers.find(g => g.id === order.co_gamer_id) : null;
+                  const runners = getOrderRunners(order);
+                  const runnerGamers = runners.map(id => gamers.find(g => g.id === id)).filter(Boolean);
+                  const isMulti = runners.length > 1;
+                  const summary = getOrderProgressSummary(order);
                   
                   return (
                     <tr key={order.id} className="hover:bg-slate-900/40 transition-colors">
@@ -1185,44 +1194,35 @@ export default function DashboardTab({
                         ) : (
                           <div className="text-cyber-cyan font-bold">{order.order_number}</div>
                         )}
-                        {coGamer && (
+                        {isMulti && (
                           <span className="inline-block mt-0.5 text-[8px] font-bold bg-cyber-cyan/15 text-cyber-cyan px-1 py-0.2 rounded border border-cyber-cyan/30 uppercase">
-                            50/50 Dual
+                            {runners.length} Runners
                           </span>
                         )}
                       </td>
                       {isManager && (
                         <td className="p-3">
-                          {coGamer ? (
-                            <div>
-                              <div className="font-bold text-slate-200 text-xs">
-                                {assignedGamer?.name || 'Unknown'} &amp; {coGamer.name}
+                          <div className="space-y-0.5">
+                            {runnerGamers.map((g, idx) => (
+                              <div key={g?.id || idx} className="text-xs">
+                                <span className="font-bold text-slate-300">{g?.name || 'Unknown'}</span>
+                                <span className="text-[10px] text-slate-500 ml-1 font-mono">({g?.employee_id})</span>
                               </div>
-                              <div className="text-[10px] text-cyber-cyan/80">
-                                IDs: {assignedGamer?.employee_id || 'N/A'} / {coGamer.employee_id}
-                              </div>
-                            </div>
-                          ) : (
-                            <div>
-                              <div className="font-bold text-slate-300">{assignedGamer ? assignedGamer.name : 'Unknown Gamer'}</div>
-                              <div className="text-[10px] text-slate-500">{assignedGamer ? `ID: ${assignedGamer.employee_id}` : ''}</div>
-                            </div>
-                          )}
+                            ))}
+                          </div>
                         </td>
                       )}
                       <td className="p-3 text-right text-slate-300 font-bold">
-                        {coGamer ? (
-                          <>
-                            <span>{formatM(order.size_millions / 2)}M each</span>
-                            <span className="text-[9px] text-slate-500 font-normal block">({formatM(order.size_millions)}M total)</span>
-                          </>
-                        ) : (
-                          <span>{formatM(order.size_millions)}M</span>
-                        )}
+                        <div className="flex flex-col items-end">
+                          <span>{formatM(summary.totalMade)}M / {formatM(order.size_millions)}M</span>
+                          <span className="text-[9px] text-cyber-cyan font-normal">
+                            {summary.remaining > 0 ? `${formatM(summary.remaining)}M left (${summary.percentage}%)` : 'Completed'}
+                          </span>
+                        </div>
                         <span className="text-[9px] text-slate-500 font-normal block">{order.asset_type || 'Haval Coins'}</span>
                       </td>
                       <td className="p-3 text-right text-cyber-green font-bold">
-                        {coGamer ? `K${Number(order.payout) / 2} each` : `K${order.payout}`}
+                        K{order.payout}
                       </td>
                       <td className="p-3 text-slate-400">
                         {new Date(order.start_date).toLocaleDateString()} {new Date(order.start_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

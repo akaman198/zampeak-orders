@@ -11,7 +11,9 @@ import {
   AttendanceStatus, 
   AttendanceRecord, 
   PayrollSummary,
-  DailyGamerEarnings
+  DailyGamerEarnings,
+  ShiftType,
+  OrderDailyProgress
 } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
@@ -62,7 +64,9 @@ interface AppContextType {
     status: OrderStatus,
     payoutOverride?: number,
     progressMillions?: number,
-    coGamerId?: string | null
+    coGamerId?: string | null,
+    assignedGamerIds?: string[],
+    dailyProgress?: OrderDailyProgress[]
   ) => Promise<{ success: boolean; error?: string }>;
   updateOrder: (
     id: string,
@@ -74,17 +78,28 @@ interface AppContextType {
     status: OrderStatus,
     payoutOverride?: number,
     progressMillions?: number,
-    coGamerId?: string | null
+    coGamerId?: string | null,
+    assignedGamerIds?: string[],
+    dailyProgress?: OrderDailyProgress[]
   ) => Promise<{ success: boolean; error?: string }>;
   deleteOrder: (id: string) => Promise<{ success: boolean; error?: string }>;
   updateOrderStatus: (id: string, status: OrderStatus) => Promise<{ success: boolean; error?: string }>;
+  logOrderDailyProgress: (
+    orderId: string,
+    entry: Omit<OrderDailyProgress, 'id' | 'order_id' | 'created_at'>
+  ) => Promise<{ success: boolean; error?: string }>;
+  deleteOrderDailyProgress: (
+    orderId: string,
+    logId: string
+  ) => Promise<{ success: boolean; error?: string }>;
   saveAttendance: (
     gamerId: string, 
     date: string, 
     status: AttendanceStatus, 
     farmedMillions?: number,
     normalOvertimeHours?: number,
-    holidayOvertimeHours?: number
+    holidayOvertimeHours?: number,
+    shift?: ShiftType
   ) => Promise<{ success: boolean; error?: string }>;
   calculatePayroll: (gamerId: string, cycleLabel: string) => PayrollSummary;
   getDailyGamerEarnings: (cycleLabel: string, targetGamerId?: string) => DailyGamerEarnings[];
@@ -282,22 +297,82 @@ export const isNewSalaryStructureCycle = (cycleLabel: string): boolean => {
 };
 
 /**
+ * Helper to get all runner IDs assigned to or contributing to an order
+ */
+export const getOrderRunners = (order: Order): string[] => {
+  const set = new Set<string>();
+  if (order.gamer_id) set.add(order.gamer_id);
+  if (order.co_gamer_id) set.add(order.co_gamer_id);
+  if (order.assigned_gamer_ids && Array.isArray(order.assigned_gamer_ids)) {
+    order.assigned_gamer_ids.forEach(id => { if (id) set.add(id); });
+  }
+  if (order.daily_progress && Array.isArray(order.daily_progress)) {
+    order.daily_progress.forEach(l => { if (l.gamer_id) set.add(l.gamer_id); });
+  }
+  return Array.from(set);
+};
+
+/**
+ * Checks if a gamer is assigned to or has logged volume on an order
+ */
+export const isGamerOnOrder = (order: Order, gamerId: string): boolean => {
+  if (order.gamer_id === gamerId || order.co_gamer_id === gamerId) return true;
+  if (order.assigned_gamer_ids && order.assigned_gamer_ids.includes(gamerId)) return true;
+  if (order.daily_progress && order.daily_progress.some(l => l.gamer_id === gamerId && Number(l.volume_millions) > 0)) return true;
+  return false;
+};
+
+/**
+ * Computes progress summary: total volume made, remaining, percentage, and per-gamer breakdown
+ */
+export const getOrderProgressSummary = (order: Order) => {
+  const size = Number(order.size_millions || 0);
+  const logs = order.daily_progress || [];
+  
+  let totalMade = 0;
+  if (logs.length > 0) {
+    totalMade = logs.reduce((sum, l) => sum + Number(l.volume_millions || 0), 0);
+  } else {
+    totalMade = order.status === 'Completed' ? size : Number(order.progress_millions || 0);
+  }
+
+  const remaining = Math.max(0, size - totalMade);
+  const percentage = size > 0 ? Math.min(100, Math.round((totalMade / size) * 100)) : 0;
+
+  // Breakdown per gamer
+  const gamerTotals: Record<string, { volume: number; dayVolume: number; nightVolume: number; homeVolume: number; logsCount: number }> = {};
+  
+  logs.forEach(log => {
+    if (!gamerTotals[log.gamer_id]) {
+      gamerTotals[log.gamer_id] = { volume: 0, dayVolume: 0, nightVolume: 0, homeVolume: 0, logsCount: 0 };
+    }
+    const vol = Number(log.volume_millions || 0);
+    gamerTotals[log.gamer_id].volume += vol;
+    gamerTotals[log.gamer_id].logsCount += 1;
+    if (log.shift === 'day') gamerTotals[log.gamer_id].dayVolume += vol;
+    else if (log.shift === 'night') gamerTotals[log.gamer_id].nightVolume += vol;
+    else if (log.shift === 'home') gamerTotals[log.gamer_id].homeVolume += vol;
+  });
+
+  return {
+    totalMade,
+    remaining,
+    percentage,
+    gamerTotals,
+    isCompleted: order.status === 'Completed' || (size > 0 && totalMade >= size)
+  };
+};
+
+/**
  * Calculates the valid completed order count (in 10M units):
  * - Target Rule: For Orders (26 Target), only count completed orders from the 14th of September 2026 onwards.
  * - Non-completed orders (Running, Paused) or orders completed prior to Sept 14th return 0 for target unit counting.
- * - Milestone targets (size_millions) and progress (progress_millions) on the orders remain untouched.
+ * - When daily_progress logs exist, awards units proportional to each runner's actual logged volume (1 unit per 10M).
+ * - When no daily_progress logs exist, splits units equally across assigned runners.
  */
 export const calculateOrderUnits = (order: Order, forGamerId?: string): number => {
   const size = Number(order.size_millions || 0);
   if (size <= 0) return 0;
-
-  const isShared = !!order.co_gamer_id;
-
-  if (forGamerId) {
-    if (order.gamer_id !== forGamerId && order.co_gamer_id !== forGamerId) {
-      return 0;
-    }
-  }
 
   // Only count orders that have been Completed
   if (order.status !== 'Completed') {
@@ -309,18 +384,39 @@ export const calculateOrderUnits = (order: Order, forGamerId?: string): number =
     return 0;
   }
 
-  if (isShared) {
-    // If specific runner requested, calculate their 50% share
+  const assignedRunners = getOrderRunners(order);
+
+  if (forGamerId) {
+    if (!isGamerOnOrder(order, forGamerId)) {
+      return 0;
+    }
+  }
+
+  // 1. If daily progress logs exist for this order, allocate units based on actual volume contributed!
+  const logs = order.daily_progress || [];
+  if (logs.length > 0) {
     if (forGamerId) {
-      const runnerShareVolume = size / 2;
+      const gamerVolume = logs
+        .filter(l => l.gamer_id === forGamerId)
+        .reduce((sum, l) => sum + Number(l.volume_millions || 0), 0);
+      return Math.floor(gamerVolume / 10);
+    } else {
+      const totalFarmed = logs.reduce((sum, l) => sum + Number(l.volume_millions || 0), 0);
+      return Math.floor(Math.min(size, totalFarmed) / 10);
+    }
+  }
+
+  // 2. Multi-runner order without daily logs (splits equally among assigned runners)
+  if (assignedRunners.length > 1) {
+    if (forGamerId) {
+      const runnerShareVolume = size / assignedRunners.length;
       return Math.floor(runnerShareVolume / 10);
     } else {
-      // Total combined order units
       return Math.floor(size / 10);
     }
   }
 
-  // Single runner
+  // 3. Single runner
   return Math.floor(size / 10);
 };
 
@@ -489,7 +585,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setIsDemo(true);
           loadLocalStorage();
         } else {
-          // Merge local cache for unmigrated fields (progress_millions, co_gamer_id)
+          // Merge local cache for unmigrated fields (progress_millions, co_gamer_id, assigned_gamer_ids, daily_progress)
           const savedOrdersStr = safeLocalStorage.getItem('zampeak_orders');
           const localOrdersMap = new Map();
           if (savedOrdersStr) {
@@ -501,10 +597,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
           const mergedOrders = (ordersData || []).map(o => {
             const local = localOrdersMap.get(o.id);
+            const assigned = (o.assigned_gamer_ids && o.assigned_gamer_ids.length > 0) 
+              ? o.assigned_gamer_ids 
+              : (local?.assigned_gamer_ids && local.assigned_gamer_ids.length > 0)
+                ? local.assigned_gamer_ids
+                : (o.co_gamer_id ? [o.gamer_id, o.co_gamer_id] : [o.gamer_id]);
+            const progressLogs = (o.daily_progress && Array.isArray(o.daily_progress))
+              ? o.daily_progress
+              : (local?.daily_progress && Array.isArray(local.daily_progress))
+                ? local.daily_progress
+                : [];
+
             return {
               ...o,
               progress_millions: o.progress_millions !== undefined ? Number(o.progress_millions) : (local?.progress_millions !== undefined ? Number(local.progress_millions) : (o.status === 'Completed' ? Number(o.size_millions) : 0)),
-              co_gamer_id: o.co_gamer_id !== undefined ? o.co_gamer_id : (local?.co_gamer_id || null)
+              co_gamer_id: o.co_gamer_id !== undefined ? o.co_gamer_id : (local?.co_gamer_id || null),
+              assigned_gamer_ids: assigned,
+              daily_progress: progressLogs
+            };
+          });
+
+          // Also merge attendance shift from local storage if not in DB
+          const savedAttStr = safeLocalStorage.getItem('zampeak_attendance');
+          const localAttMap = new Map();
+          if (savedAttStr) {
+            try {
+              const parsedAtt: AttendanceRecord[] = JSON.parse(savedAttStr);
+              parsedAtt.forEach(a => localAttMap.set(`${a.gamer_id}_${a.date}`, a));
+            } catch (e) {}
+          }
+          const mergedAttendance = (attendanceData || []).map(a => {
+            const local = localAttMap.get(`${a.gamer_id}_${a.date}`);
+            return {
+              ...a,
+              shift: a.shift || local?.shift || 'day'
             };
           });
 
@@ -512,8 +638,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
           setGamers(gamersData || []);
           setOrders(finalOrders);
-          setAttendance(attendanceData || []);
+          setAttendance(mergedAttendance);
           safeLocalStorage.setItem('zampeak_orders', JSON.stringify(finalOrders));
+          safeLocalStorage.setItem('zampeak_attendance', JSON.stringify(mergedAttendance));
         }
       } catch (err) {
         console.error('Failed to load from Supabase, falling back to local storage:', err);
@@ -948,7 +1075,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     status: OrderStatus,
     payoutOverride?: number,
     progressMillions?: number,
-    coGamerId?: string | null
+    coGamerId?: string | null,
+    assignedGamerIds?: string[],
+    dailyProgress?: OrderDailyProgress[]
   ) => {
     const defaultPayout = sizeMillions;
     const finalPayout = payoutOverride !== undefined ? payoutOverride : defaultPayout;
@@ -962,13 +1091,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     const completedDate = status === 'Completed' ? todayDateStr() : undefined;
 
+    const resolvedAssigned: string[] = assignedGamerIds && assignedGamerIds.length > 0
+      ? Array.from(new Set(assignedGamerIds))
+      : Array.from(new Set([gamerId, ...(coGamerId ? [coGamerId] : [])]));
+
+    const finalPrimaryGamer = resolvedAssigned[0] || gamerId;
+    const finalCoGamer = resolvedAssigned.length > 1 ? resolvedAssigned[1] : (coGamerId || null);
+
+    const initialLogs = dailyProgress || [];
+    const calculatedProgress = initialLogs.length > 0
+      ? initialLogs.reduce((s, l) => s + Number(l.volume_millions || 0), 0)
+      : (progressMillions !== undefined ? progressMillions : (status === 'Completed' ? sizeMillions : 0));
+
     const newOrder: Order = {
       id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11),
       order_number: orderNumber,
-      gamer_id: gamerId,
-      co_gamer_id: coGamerId || null,
+      gamer_id: finalPrimaryGamer,
+      co_gamer_id: finalCoGamer,
+      assigned_gamer_ids: resolvedAssigned,
       size_millions: sizeMillions,
-      progress_millions: progressMillions !== undefined ? progressMillions : (status === 'Completed' ? sizeMillions : 0),
+      progress_millions: calculatedProgress,
+      daily_progress: initialLogs,
       asset_type: assetType,
       start_date: startDate || new Date().toISOString(),
       status,
@@ -980,9 +1123,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!isDemo && supabase) {
       try {
         let { error } = await supabase.from('orders').insert([newOrder]);
-        if (error && (error.message?.includes('co_gamer_id') || error.message?.includes('progress_millions') || error.message?.includes('schema cache'))) {
-          // Graceful fallback retry if co_gamer_id or progress_millions column has not been added to Supabase table yet
+        if (error && (
+          error.message?.includes('assigned_gamer_ids') || 
+          error.message?.includes('daily_progress') || 
+          error.message?.includes('co_gamer_id') || 
+          error.message?.includes('progress_millions') || 
+          error.message?.includes('schema cache')
+        )) {
+          // Graceful fallback retry if custom columns haven't been added to Supabase table yet
           const fallbackOrder: any = { ...newOrder };
+          delete fallbackOrder.assigned_gamer_ids;
+          delete fallbackOrder.daily_progress;
           delete fallbackOrder.co_gamer_id;
           delete fallbackOrder.progress_millions;
           const retryRes = await supabase.from('orders').insert([fallbackOrder]);
@@ -1017,7 +1168,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     status: OrderStatus,
     payoutOverride?: number,
     progressMillions?: number,
-    coGamerId?: string | null
+    coGamerId?: string | null,
+    assignedGamerIds?: string[],
+    dailyProgress?: OrderDailyProgress[]
   ) => {
     const defaultPayout = sizeMillions;
     const finalPayout = payoutOverride !== undefined ? payoutOverride : defaultPayout;
@@ -1034,18 +1187,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ? (existing?.completed_date || todayDateStr()) 
       : undefined;
 
+    const resolvedAssigned: string[] = assignedGamerIds && assignedGamerIds.length > 0
+      ? Array.from(new Set(assignedGamerIds))
+      : (coGamerId !== undefined 
+          ? Array.from(new Set([gamerId, ...(coGamerId ? [coGamerId] : [])]))
+          : (existing?.assigned_gamer_ids || [gamerId]));
+
+    const finalPrimaryGamer = resolvedAssigned[0] || gamerId;
+    const finalCoGamer = resolvedAssigned.length > 1 ? resolvedAssigned[1] : (coGamerId !== undefined ? coGamerId : (existing?.co_gamer_id || null));
+    const finalDailyProgress = dailyProgress !== undefined ? dailyProgress : (existing?.daily_progress || []);
+
     const finalProgress = progressMillions !== undefined 
       ? progressMillions 
-      : (status === 'Completed' ? sizeMillions : (existing?.progress_millions || 0));
-
-    const finalCoGamerId = coGamerId !== undefined ? coGamerId : (existing?.co_gamer_id || null);
+      : (finalDailyProgress.length > 0 
+          ? finalDailyProgress.reduce((s, l) => s + Number(l.volume_millions || 0), 0)
+          : (status === 'Completed' ? sizeMillions : (existing?.progress_millions || 0)));
 
     if (!isDemo && supabase) {
       try {
         const updates: any = {
           order_number: orderNumber,
-          gamer_id: gamerId,
-          co_gamer_id: finalCoGamerId,
+          gamer_id: finalPrimaryGamer,
+          co_gamer_id: finalCoGamer,
+          assigned_gamer_ids: resolvedAssigned,
+          daily_progress: finalDailyProgress,
           size_millions: sizeMillions,
           progress_millions: finalProgress,
           asset_type: assetType,
@@ -1056,8 +1221,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         };
 
         let { error } = await supabase.from('orders').update(updates).eq('id', id);
-        if (error && (error.message?.includes('co_gamer_id') || error.message?.includes('progress_millions') || error.message?.includes('schema cache'))) {
-          // Graceful fallback retry if co_gamer_id or progress_millions column has not been added to Supabase table yet
+        if (error && (
+          error.message?.includes('assigned_gamer_ids') || 
+          error.message?.includes('daily_progress') || 
+          error.message?.includes('co_gamer_id') || 
+          error.message?.includes('progress_millions') || 
+          error.message?.includes('schema cache')
+        )) {
+          // Graceful fallback retry if custom columns haven't been added to Supabase table yet
+          delete updates.assigned_gamer_ids;
+          delete updates.daily_progress;
           delete updates.co_gamer_id;
           delete updates.progress_millions;
           const retryRes = await supabase.from('orders').update(updates).eq('id', id);
@@ -1066,7 +1239,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (error) throw error;
 
         setOrders((prev) => {
-          const updated = prev.map((o) => (o.id === id ? { ...o, ...updates, co_gamer_id: finalCoGamerId, progress_millions: finalProgress, completed_date: completedDate || undefined } : o));
+          const updated = prev.map((o) => (o.id === id ? { 
+            ...o, 
+            ...updates, 
+            gamer_id: finalPrimaryGamer,
+            co_gamer_id: finalCoGamer,
+            assigned_gamer_ids: resolvedAssigned,
+            daily_progress: finalDailyProgress,
+            progress_millions: finalProgress, 
+            completed_date: completedDate || undefined 
+          } : o));
           safeLocalStorage.setItem('zampeak_orders', JSON.stringify(updated));
           return updated;
         });
@@ -1081,8 +1263,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? {
               ...o,
               order_number: orderNumber,
-              gamer_id: gamerId,
-              co_gamer_id: finalCoGamerId,
+              gamer_id: finalPrimaryGamer,
+              co_gamer_id: finalCoGamer,
+              assigned_gamer_ids: resolvedAssigned,
+              daily_progress: finalDailyProgress,
               size_millions: sizeMillions,
               progress_millions: finalProgress,
               asset_type: assetType,
@@ -1150,13 +1334,84 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const logOrderDailyProgress = async (
+    orderId: string,
+    entry: Omit<OrderDailyProgress, 'id' | 'order_id' | 'created_at'>
+  ) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return { success: false, error: 'Order not found' };
+
+    const newLogId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11);
+    const newLog: OrderDailyProgress = {
+      id: newLogId,
+      order_id: orderId,
+      gamer_id: entry.gamer_id,
+      date: entry.date,
+      shift: entry.shift || 'day',
+      volume_millions: Number(entry.volume_millions || 0),
+      notes: entry.notes || '',
+      created_at: new Date().toISOString()
+    };
+
+    const currentLogs = order.daily_progress || [];
+    const updatedLogs = [...currentLogs, newLog];
+    const newTotalMade = updatedLogs.reduce((sum, l) => sum + Number(l.volume_millions || 0), 0);
+
+    // Ensure the contributing gamer is registered in assigned_gamer_ids
+    const currentAssigned = getOrderRunners(order);
+    const updatedAssigned = currentAssigned.includes(entry.gamer_id) ? currentAssigned : [...currentAssigned, entry.gamer_id];
+
+    // Auto-complete if total made reaches or exceeds order size
+    const newStatus = (newTotalMade >= order.size_millions && order.status === 'Running') ? 'Completed' : order.status;
+
+    return await updateOrder(
+      order.id,
+      order.order_number,
+      updatedAssigned[0] || order.gamer_id,
+      order.size_millions,
+      order.asset_type,
+      order.start_date,
+      newStatus,
+      order.payout,
+      newTotalMade,
+      updatedAssigned[1] || null,
+      updatedAssigned,
+      updatedLogs
+    );
+  };
+
+  const deleteOrderDailyProgress = async (orderId: string, logId: string) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return { success: false, error: 'Order not found' };
+
+    const currentLogs = order.daily_progress || [];
+    const updatedLogs = currentLogs.filter((l) => l.id !== logId);
+    const newTotalMade = updatedLogs.reduce((sum, l) => sum + Number(l.volume_millions || 0), 0);
+
+    return await updateOrder(
+      order.id,
+      order.order_number,
+      order.gamer_id,
+      order.size_millions,
+      order.asset_type,
+      order.start_date,
+      order.status,
+      order.payout,
+      newTotalMade,
+      order.co_gamer_id || null,
+      order.assigned_gamer_ids,
+      updatedLogs
+    );
+  };
+
   const saveAttendance = async (
     gamerId: string, 
     date: string, 
     status: AttendanceStatus, 
     farmedMillions?: number,
     normalOvertimeHours?: number,
-    holidayOvertimeHours?: number
+    holidayOvertimeHours?: number,
+    shift?: ShiftType
   ) => {
     const existingRecord = attendance.find(a => a.gamer_id === gamerId && a.date === date);
     const targetGamer = gamers.find(g => g.id === gamerId);
@@ -1165,6 +1420,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       : (targetGamer?.team_leader_id || null);
 
     const finalStatus = status;
+    const finalShift = shift || existingRecord?.shift || 'day';
     const finalFarmedMillions = farmedMillions !== undefined ? farmedMillions : (existingRecord?.farmed_millions || 0);
     const finalNormalOT = normalOvertimeHours !== undefined ? normalOvertimeHours : (existingRecord?.normal_overtime_hours || 0);
     const finalHolidayOT = holidayOvertimeHours !== undefined ? holidayOvertimeHours : (existingRecord?.holiday_overtime_hours || 0);
@@ -1174,6 +1430,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       gamer_id: gamerId,
       date,
       status: finalStatus,
+      shift: finalShift,
       farmed_millions: finalFarmedMillions,
       normal_overtime_hours: finalNormalOT,
       holiday_overtime_hours: finalHolidayOT,
@@ -1187,6 +1444,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           gamer_id: gamerId,
           date,
           status: finalStatus,
+          shift: finalShift,
           farmed_millions: finalFarmedMillions,
           normal_overtime_hours: finalNormalOT,
           holiday_overtime_hours: finalHolidayOT,
@@ -1201,8 +1459,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           .upsert(payload, { onConflict: 'gamer_id,date' })
           .select();
 
-        if (error && (error.message?.includes('overtime') || error.message?.includes('team_leader_id') || error.message?.includes('schema cache'))) {
-          // Graceful fallback retry if overtime/team_leader_id columns are not yet in Supabase table
+        if (error && (
+          error.message?.includes('shift') || 
+          error.message?.includes('overtime') || 
+          error.message?.includes('team_leader_id') || 
+          error.message?.includes('schema cache')
+        )) {
+          // Graceful fallback retry if shift/overtime/team_leader_id columns are not yet in Supabase table
           const fallbackPayload: any = {
             gamer_id: gamerId,
             date,
@@ -1224,6 +1487,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const filtered = prev.filter((a) => !(a.gamer_id === gamerId && a.date === date));
           const upserted = data && data[0] ? { ...newRecord, ...data[0] } : newRecord;
           const updated = [upserted, ...filtered];
+          safeLocalStorage.setItem('zampeak_attendance', JSON.stringify(updated));
           return updated;
         });
 
@@ -1290,7 +1554,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let completedOrdersCount = 0;
     if (isNew) {
       const gamerOrdersInCycle = orders.filter((o) => {
-        if (o.gamer_id !== gamerId && o.co_gamer_id !== gamerId) return false;
+        if (!isGamerOnOrder(o, gamerId)) return false;
         if (o.status === 'Completed') {
           const compDate = (o.completed_date || o.start_date || o.created_at || '').slice(0, 10);
           if (!compDate || compDate < '2026-09-14') {
@@ -1304,7 +1568,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       completedOrdersCount = gamerOrdersInCycle.reduce((sum, o) => sum + calculateOrderUnits(o, gamerId), 0);
     } else {
       const legacyCompleted = orders.filter(
-        (o) => (o.gamer_id === gamerId || o.co_gamer_id === gamerId) && o.status === 'Completed' && getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel
+        (o) => isGamerOnOrder(o, gamerId) && o.status === 'Completed' && getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel
       );
       completedOrdersCount = legacyCompleted.length;
     }
@@ -1414,7 +1678,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (allTeamGamers.length > 0) {
           const teamMemberStats = allTeamGamers.map(m => {
             const mOrders = orders.filter((o) => {
-              if (o.gamer_id !== m.id && o.co_gamer_id !== m.id) return false;
+              if (!isGamerOnOrder(o, m.id)) return false;
               if (o.status === 'Completed') {
                 const compDate = (o.completed_date || o.start_date || o.created_at || '').slice(0, 10);
                 if (!compDate || compDate < '2026-09-14') {
@@ -1456,7 +1720,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let maxOrdersInCycle = 0;
       for (const runner of orderRunners) {
         const runnerOrders = orders.filter((o) => {
-          if (o.gamer_id !== runner.id && o.co_gamer_id !== runner.id) return false;
+          if (!isGamerOnOrder(o, runner.id)) return false;
           if (o.status === 'Completed') {
             const compDate = (o.completed_date || o.start_date || o.created_at || '').slice(0, 10);
             if (!compDate || compDate < '2026-09-14') return false;
@@ -1654,13 +1918,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const attendanceStatus = att ? att.status : 'no_log';
         const isPresent = att && (att.status === 'present_on_time' || att.status === 'present_late');
 
-        // Find completed orders for this gamer on this date (including shared orders)
+        // Find completed orders for this gamer on this date (including shared / multi-runner orders)
         const gamerCompletedOrders = orders.filter(
-          (o) => (o.gamer_id === gamer.id || o.co_gamer_id === gamer.id) &&
+          (o) => isGamerOnOrder(o, gamer.id) &&
                  o.status === 'Completed' &&
                  (o.completed_date || o.start_date?.slice(0, 10)) === dateStr
         );
-        let orderBonus = gamerCompletedOrders.reduce((sum, o) => sum + (o.co_gamer_id ? Number(o.payout || 0) / 2 : Number(o.payout || 0)), 0);
+        let orderBonus = gamerCompletedOrders.reduce((sum, o) => {
+          const size = Number(o.size_millions || 0);
+          const payout = Number(o.payout || 0);
+          if (o.daily_progress && o.daily_progress.length > 0) {
+            const gamerVol = o.daily_progress.filter(l => l.gamer_id === gamer.id).reduce((s, l) => s + Number(l.volume_millions || 0), 0);
+            return sum + (size > 0 ? (gamerVol / size) * payout : 0);
+          }
+          const runners = getOrderRunners(o);
+          return sum + (runners.length > 0 ? payout / runners.length : payout);
+        }, 0);
 
         let basePayEarned = 0;
         let teamVolumeBonus = 0;
@@ -1806,6 +2079,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updateOrder,
         deleteOrder,
         updateOrderStatus,
+        logOrderDailyProgress,
+        deleteOrderDailyProgress,
         saveAttendance,
         calculatePayroll,
         getDailyGamerEarnings,
