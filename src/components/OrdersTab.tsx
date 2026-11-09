@@ -147,9 +147,7 @@ export default function OrdersTab() {
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     
     setOrderNumber('');
-    const activeGamers = gamers.filter(g => g.status === 'active' && g.gamer_role !== 'technical_manager');
-    const initialGamerId = activeGamers.length > 0 ? activeGamers[0].id : gamers[0]?.id || '';
-    setAssignedGamerIds(initialGamerId ? [initialGamerId] : []);
+    setAssignedGamerIds([]);
     setSelectedRunnerToAdd('');
     setSizeMillions(50);
     setAssetType('Haval Coins');
@@ -193,10 +191,6 @@ export default function OrdersTab() {
 
   // Remove runner from form's assigned list
   const handleRemoveRunner = (idToRemove: string) => {
-    if (assignedGamerIds.length <= 1) {
-      setFormError('At least one operational operator must remain assigned to the order.');
-      return;
-    }
     setAssignedGamerIds(assignedGamerIds.filter(id => id !== idToRemove));
     setFormError('');
   };
@@ -209,7 +203,7 @@ export default function OrdersTab() {
       return;
     }
     if (assignedGamerIds.length === 0) {
-      setFormError('At least one operational operator must be assigned.');
+      setFormError('Please assign at least one operator (Lead Operator) to the order.');
       return;
     }
     if (sizeMillions <= 0) {
@@ -544,31 +538,39 @@ export default function OrdersTab() {
                     <Users size={14} /> Assigned Operators ({assignedGamerIds.length})
                   </label>
                   <span className="text-[10px] text-slate-400">
-                    {assignedGamerIds.length > 1 ? '⚡ Multi-Operator Shared Mission' : 'Solo Assignment'}
+                    {assignedGamerIds.length > 1 
+                      ? '⚡ Multi-Operator Shared Mission' 
+                      : assignedGamerIds.length === 1 
+                        ? 'Solo Assignment' 
+                        : 'No Operator Assigned'}
                   </span>
                 </div>
 
                 {/* Assigned Runners Chip List */}
                 <div className="space-y-1.5">
                   <span className="text-[10px] text-slate-400 block uppercase">Current Crew on this Order:</span>
-                  <div className="flex flex-wrap gap-2">
-                    {assignedGamerIds.map((gId, index) => {
-                      const gamer = gamers.find(g => g.id === gId);
-                      const isLead = index === 0;
-                      return (
-                        <div 
-                          key={gId} 
-                          className={`flex items-center gap-2 px-2.5 py-1.5 rounded border text-xs ${
-                            isLead 
-                              ? 'bg-cyber-cyan/15 border-cyber-cyan/40 text-cyber-cyan font-bold' 
-                              : 'bg-slate-800/80 border-cyber-border text-slate-300'
-                          }`}
-                        >
-                          <span className="text-[9px] uppercase px-1 py-0.2 rounded font-mono bg-slate-950/60">
-                            {isLead ? 'Lead' : `Runner #${index + 1}`}
-                          </span>
-                          <span>{gamer?.name || 'Unknown'} (ID: {gamer?.employee_id})</span>
-                          {assignedGamerIds.length > 1 && (
+                  {assignedGamerIds.length === 0 ? (
+                    <div className="text-[11px] text-amber-400/90 bg-amber-400/10 p-2.5 rounded border border-amber-400/20">
+                      ⚠ No operators assigned yet. Please select an operator below to set as the Lead Operator.
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {assignedGamerIds.map((gId, index) => {
+                        const gamer = gamers.find(g => g.id === gId);
+                        const isLead = index === 0;
+                        return (
+                          <div 
+                            key={gId} 
+                            className={`flex items-center gap-2 px-2.5 py-1.5 rounded border text-xs ${
+                              isLead 
+                                ? 'bg-cyber-cyan/15 border-cyber-cyan/40 text-cyber-cyan font-bold' 
+                                : 'bg-slate-800/80 border-cyber-border text-slate-300'
+                            }`}
+                          >
+                            <span className="text-[9px] uppercase px-1 py-0.2 rounded font-mono bg-slate-950/60">
+                              {isLead ? 'Lead' : `Runner #${index + 1}`}
+                            </span>
+                            <span>{gamer?.name || 'Unknown'} (ID: {gamer?.employee_id})</span>
                             <button
                               type="button"
                               onClick={() => handleRemoveRunner(gId)}
@@ -577,23 +579,27 @@ export default function OrdersTab() {
                             >
                               <X size={12} />
                             </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Add Operator to Order */}
                 <div className="pt-2 border-t border-cyber-border/20 space-y-2">
-                  <span className="text-[10px] text-slate-400 block uppercase">Add Another Operator (Day / Night / Home):</span>
+                  <span className="text-[10px] text-slate-400 block uppercase">
+                    {assignedGamerIds.length === 0 ? 'Select Lead Operator:' : 'Add Another Operator (Day / Night / Home):'}
+                  </span>
                   <div className="flex gap-2">
                     <select 
                       value={selectedRunnerToAdd}
                       onChange={(e) => setSelectedRunnerToAdd(e.target.value)}
                       className="flex-1 bg-slate-950 border border-cyber-border rounded px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer text-xs"
                     >
-                      <option value="">Select operator to add...</option>
+                      <option value="">
+                        {assignedGamerIds.length === 0 ? 'Choose lead operator...' : 'Select operator to add...'}
+                      </option>
                       {filteredGamersForSelect
                         .filter(g => g.gamer_role !== 'technical_manager' && !assignedGamerIds.includes(g.id))
                         .map(g => (
@@ -605,13 +611,13 @@ export default function OrdersTab() {
                       type="button"
                       onClick={handleAddRunner}
                       disabled={!selectedRunnerToAdd}
-                      className="flex items-center gap-1 bg-cyber-green/20 hover:bg-cyber-green text-cyber-green hover:text-slate-950 border border-cyber-green/40 px-3 py-1.5 rounded font-bold uppercase transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer text-xs"
+                      className="flex items-center gap-1 bg-cyber-green/20 hover:bg-cyber-green text-cyber-green hover:text-slate-950 border border-cyber-green/40 px-3 py-1.5 rounded font-bold uppercase transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer text-xs whitespace-nowrap"
                     >
-                      <UserPlus size={13} /> Add
+                      <UserPlus size={13} /> {assignedGamerIds.length === 0 ? 'Assign Lead' : 'Add'}
                     </button>
                   </div>
                   <p className="text-[9px] text-slate-400 leading-relaxed">
-                    💡 <em>Pro-tip:</em> When multiple operators are assigned, you can log the exact daily volumes made by each runner on day, night, or home shifts. Completed order units and payouts will accurately reflect each operator&apos;s real contributions.
+                    💡 <em>Pro-tip:</em> The first operator selected will be the Lead Operator. You can add additional operators (day/night shifts) and remove any operator with the &times; button.
                   </p>
                 </div>
               </div>
