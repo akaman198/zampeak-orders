@@ -429,7 +429,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
               className="bg-slate-950 border border-cyber-border rounded px-3 py-1.5 text-cyber-cyan text-xs font-mono focus:outline-none focus:border-cyber-cyan cursor-pointer"
             >
               {availableCycles.map(cycle => (
-                <option key={cycle} value={cycle}>{cycle}</option>
+                <option key={cycle} value={cycle}>
+                  {cycle} — {getCycleRangeLabel(cycle).replace('Cycle period: ', '')}
+                </option>
               ))}
             </select>
           </div>

@@ -12,7 +12,8 @@ import {
   Pause,
   CheckCircle,
   Clock,
-  XCircle
+  XCircle,
+  Edit3
 } from 'lucide-react';
 import { OrderStatus } from '../types';
 
@@ -473,7 +474,9 @@ export default function DashboardTab({
               className="bg-slate-950 border border-cyber-border rounded px-3 py-1 text-cyber-cyan text-xs font-mono focus:outline-none focus:border-cyber-cyan cursor-pointer"
             >
               {availableCycles.map(cycle => (
-                <option key={cycle} value={cycle}>{cycle}</option>
+                <option key={cycle} value={cycle}>
+                  {cycle} — {getCycleRangeLabel(cycle).replace('Cycle period: ', '')}
+                </option>
               ))}
             </select>
           </div>
@@ -1155,7 +1158,18 @@ export default function DashboardTab({
                   return (
                     <tr key={order.id} className="hover:bg-slate-900/40 transition-colors">
                       <td className="p-3">
-                        <div className="text-cyber-cyan font-bold">{order.order_number}</div>
+                        {isManager ? (
+                          <button
+                            onClick={() => onNavigate('orders')}
+                            title="Go to Orders to view and edit order details"
+                            className="text-left text-cyber-cyan font-bold hover:underline hover:text-white transition-all inline-flex items-center gap-1 group cursor-pointer"
+                          >
+                            <span>{order.order_number}</span>
+                            <Edit3 size={10} className="opacity-0 group-hover:opacity-100 text-cyber-cyan transition-opacity" />
+                          </button>
+                        ) : (
+                          <div className="text-cyber-cyan font-bold">{order.order_number}</div>
+                        )}
                         {coGamer && (
                           <span className="inline-block mt-0.5 text-[8px] font-bold bg-cyber-cyan/15 text-cyber-cyan px-1 py-0.2 rounded border border-cyber-cyan/30 uppercase">
                             50/50 Dual
