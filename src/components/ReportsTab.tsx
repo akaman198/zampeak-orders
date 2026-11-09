@@ -124,6 +124,7 @@ export default function ReportsTab() {
   const totalAttendanceSalary = payrollSummaries.reduce((sum, p) => sum + (p.attendanceSalary || 0), 0);
   const totalTransportAllowance = payrollSummaries.reduce((sum, p) => sum + (p.transportAllowance || 0), 0);
   const totalExcessOrderIncentive = payrollSummaries.reduce((sum, p) => sum + (p.excessOrderIncentive || 0), 0);
+  const totalTopRunnerBonus = payrollSummaries.reduce((sum, p) => sum + (p.topRunnerBonus || 0), 0);
   const totalNormalOTHoursAll = payrollSummaries.reduce((sum, p) => sum + (p.normalOvertimeHours || 0), 0);
   const totalHolidayOTHoursAll = payrollSummaries.reduce((sum, p) => sum + (p.holidayOvertimeHours || 0), 0);
   const totalOvertimePayAll = payrollSummaries.reduce((sum, p) => sum + (p.overtimePay || 0), 0);
@@ -154,10 +155,11 @@ export default function ReportsTab() {
       'Operator Name',
       'Days Worked',
       'Orders (26 Target)',
-      'Responsibility Salary (K800 Base)',
+      'Responsibility Salary (K900 Base)',
       'Attendance Salary (K200 Base)',
       'Transport Allowance (K10/day)',
       'Excess Order Incentive',
+      'Top Runner Bonus (K300)',
       'Normal OT Hours (1.5x)',
       'Holiday OT Hours (2.0x)',
       'Total Overtime Pay',
@@ -175,6 +177,7 @@ export default function ReportsTab() {
       (p.attendanceSalary || 0).toFixed(2),
       (p.transportAllowance || 0).toFixed(2),
       (p.excessOrderIncentive || 0).toFixed(2),
+      (p.topRunnerBonus || 0).toFixed(2),
       p.normalOvertimeHours || 0,
       p.holidayOvertimeHours || 0,
       (p.overtimePay || 0).toFixed(2),
@@ -193,6 +196,7 @@ export default function ReportsTab() {
       totalAttendanceSalary.toFixed(2),
       totalTransportAllowance.toFixed(2),
       totalExcessOrderIncentive.toFixed(2),
+      totalTopRunnerBonus.toFixed(2),
       totalNormalOTHoursAll,
       totalHolidayOTHoursAll,
       totalOvertimePayAll.toFixed(2),
@@ -486,10 +490,11 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                       <th className="py-2.5 px-2">Operator Name</th>
                       <th className="py-2.5 px-2 text-center">Days Worked</th>
                       <th className="py-2.5 px-2 text-center text-cyber-cyan">Orders (26 Target)</th>
-                      <th className="py-2.5 px-2 text-right">Responsibility (K800)</th>
+                      <th className="py-2.5 px-2 text-right">Responsibility (K900)</th>
                       <th className="py-2.5 px-2 text-right">Attendance (K200)</th>
                       <th className="py-2.5 px-2 text-right">Transport (K10/d)</th>
                       <th className="py-2.5 px-2 text-right text-cyber-green print:text-green-700 font-bold">Excess Orders</th>
+                      <th className="py-2.5 px-2 text-right text-cyber-yellow print:text-yellow-700 font-bold">Top Runner Bonus</th>
                       <th className="py-2.5 px-2 text-center text-cyber-cyan print:text-cyan-700 font-bold">OT 1.5x (hrs)</th>
                       <th className="py-2.5 px-2 text-center text-cyber-cyan print:text-cyan-700 font-bold">OT 2.0x (hrs)</th>
                       <th className="py-2.5 px-2 text-right text-cyber-cyan print:text-cyan-700 font-bold">Overtime Pay</th>
@@ -511,6 +516,15 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                           K{(p.excessOrderIncentive || 0).toFixed(2)}
                           {(p.excessOrdersCount || 0) > 0 && (
                             <span className="text-[9px] text-slate-500 block font-normal">+{p.excessOrdersCount} excess</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-2 text-right font-bold text-cyber-yellow print:text-yellow-700">
+                          {(p.topRunnerBonus || 0) > 0 ? (
+                            <span className="bg-cyber-yellow/15 text-cyber-yellow border border-cyber-yellow/30 px-1 py-0.5 rounded text-[9px] inline-block font-mono">
+                              👑 K{p.topRunnerBonus}
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 font-normal">K0.00</span>
                           )}
                         </td>
                         <td className="py-3 px-2 text-center font-mono font-bold text-slate-200">
@@ -543,6 +557,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                       <td className="py-3 px-2 text-right font-black">K{totalAttendanceSalary.toLocaleString()}</td>
                       <td className="py-3 px-2 text-right font-black">K{totalTransportAllowance.toLocaleString()}</td>
                       <td className="py-3 px-2 text-right text-cyber-green print:text-green-700 font-black">K{totalExcessOrderIncentive.toLocaleString()}</td>
+                      <td className="py-3 px-2 text-right text-cyber-yellow print:text-yellow-700 font-black">K{totalTopRunnerBonus.toLocaleString()}</td>
                       <td className="py-3 px-2 text-center text-cyber-cyan print:text-cyan-700 font-black">{totalNormalOTHoursAll} hrs</td>
                       <td className="py-3 px-2 text-center text-cyber-cyan print:text-cyan-700 font-black">{totalHolidayOTHoursAll} hrs</td>
                       <td className="py-3 px-2 text-right text-cyber-cyan print:text-cyan-700 font-black">K{totalOvertimePayAll.toLocaleString()}</td>

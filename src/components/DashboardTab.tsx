@@ -556,6 +556,11 @@ export default function DashboardTab({
                           <div>
                             <span className="font-bold text-slate-300">{g.name}</span>
                             <span className="text-[9px] text-slate-500 ml-1.5 capitalize">({g.gamer_role?.replace('_', ' ')} - {g.level})</span>
+                            {(payroll.topRunnerBonus || 0) > 0 && (
+                              <span className="ml-1.5 text-[8px] bg-cyber-yellow/15 text-cyber-yellow border border-cyber-yellow/30 px-1 py-0.5 rounded font-bold font-mono">
+                                👑 #1 Top Runner (+K300)
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-3">
                             <span className="text-cyber-cyan font-bold bg-cyber-cyan/10 px-1.5 py-0.5 rounded border border-cyber-cyan/20">
@@ -610,9 +615,19 @@ export default function DashboardTab({
                         )}
                         {(payroll.overtimePay || 0) > 0 && (
                           <div className="flex justify-between">
-                            <span className="text-slate-500">Overtime Pay (Base K800):</span>
+                            <span className="text-slate-500">Overtime Pay (Base K900):</span>
                             <span className="font-bold text-cyber-cyan">
                               K{(payroll.overtimePay || 0).toFixed(2)} ({payroll.normalOvertimeHours || 0}h @ 1.5x, {payroll.holidayOvertimeHours || 0}h @ 2.0x)
+                            </span>
+                          </div>
+                        )}
+                        {(payroll.topRunnerBonus || 0) > 0 && (
+                          <div className="flex justify-between col-span-1 md:col-span-2 bg-cyber-yellow/10 border border-cyber-yellow/30 px-2 py-1 rounded">
+                            <span className="text-cyber-yellow font-bold flex items-center gap-1">
+                              👑 Top Runner Monthly Bonus (#1 Valid Orders):
+                            </span>
+                            <span className="font-bold text-cyber-yellow font-mono text-glow-yellow">
+                              +K{payroll.topRunnerBonus}
                             </span>
                           </div>
                         )}

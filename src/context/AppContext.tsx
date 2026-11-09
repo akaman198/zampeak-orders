@@ -1266,6 +1266,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       teamVolumeBonus: 0,
       totalPay: 0,
       isNewStructure: false,
+      topRunnerBonus: 0,
     };
 
     if (!gamer) return emptyPayroll;
@@ -1341,6 +1342,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           attendanceSalary: 0,
           transportAllowance: 0,
           excessOrderIncentive: 0,
+          topRunnerBonus: 0,
           completedOrdersCount,
           excessOrdersCount: 0,
           teamIncentive: 0,
@@ -1351,11 +1353,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       // Runners & Team Leaders use the unified production salary system
-      const baseSalary = 800; // Responsibility Target Base (26 orders)
-      const dailyRate = 800 / 26;
+      const baseSalary = 900; // Responsibility Target Base (26 orders)
+      const dailyRate = 900 / 26;
 
-      // A. Responsibility Salary: K800 × MIN(validOrders / 26, 1.0)
-      const responsibilitySalary = Number((800 * Math.min(1.0, completedOrdersCount / 26)).toFixed(2));
+      // A. Responsibility Salary: K900 × MIN(validOrders / 26, 1.0)
+      const responsibilitySalary = Number((900 * Math.min(1.0, completedOrdersCount / 26)).toFixed(2));
 
       // B. Attendance Salary: K200 × MIN(attendanceDays / 26, 1.0)
       const attendanceSalary = Number((200 * Math.min(1.0, cappedDaysWorked / 26)).toFixed(2));
@@ -1364,28 +1366,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const transportAllowance = Number((10 * daysWorked).toFixed(2));
 
       // D. Excess Order Incentive (Progressive Tiers from 27th order onwards)
+      // Tier 1: 27–39 orders @ K40
+      // Tier 2: 40–52 orders @ K45
+      // Tier 3: 53–65 orders @ K50
+      // Tier 4: 66+ orders @ K50
       let excessOrderIncentive = 0;
       let remainingExcess = Math.max(0, completedOrdersCount - 26);
       const excessOrdersCount = remainingExcess;
 
-      // Tier 1: Orders 27–39 (up to 13 orders @ K35)
+      // Tier 1: Orders 27–39 (up to 13 orders @ K40)
       const tier1 = Math.min(13, remainingExcess);
-      excessOrderIncentive += tier1 * 35;
+      excessOrderIncentive += tier1 * 40;
       remainingExcess -= tier1;
 
-      // Tier 2: Orders 40–52 (up to 13 orders @ K40)
+      // Tier 2: Orders 40–52 (up to 13 orders @ K45)
       const tier2 = Math.min(13, remainingExcess);
-      excessOrderIncentive += tier2 * 40;
+      excessOrderIncentive += tier2 * 45;
       remainingExcess -= tier2;
 
-      // Tier 3: Orders 53–65 (up to 13 orders @ K45)
+      // Tier 3: Orders 53–65 (up to 13 orders @ K50)
       const tier3 = Math.min(13, remainingExcess);
-      excessOrderIncentive += tier3 * 45;
+      excessOrderIncentive += tier3 * 50;
       remainingExcess -= tier3;
 
-      // Tier 4: Orders 66+ (remaining @ K45)
+      // Tier 4: Orders 66+ (remaining @ K50)
       if (remainingExcess > 0) {
-        excessOrderIncentive += remainingExcess * 45;
+        excessOrderIncentive += remainingExcess * 50;
       }
       excessOrderIncentive = Number(excessOrderIncentive.toFixed(2));
 
@@ -1444,23 +1450,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // G. Additional Performance Award (Manual bonus adjustment)
       const additionalPerformanceAward = gamer.bonus_adjustment || 0;
 
-      // H. Overtime Pay: Base K800 / 208 hrs ≈ K3.85 / hr
+      // G2. Top Runner Bonus: The runner who completes the highest number of valid orders in a month receives an additional K300 bonus.
+      let topRunnerBonus = 0;
+      const orderRunners = gamers.filter(g => g.gamer_role !== 'technical_manager');
+      let maxOrdersInCycle = 0;
+      for (const runner of orderRunners) {
+        const runnerOrders = orders.filter((o) => {
+          if (o.gamer_id !== runner.id && o.co_gamer_id !== runner.id) return false;
+          if (o.status === 'Completed') {
+            const compDate = (o.completed_date || o.start_date || o.created_at || '').slice(0, 10);
+            if (!compDate || compDate < '2026-09-14') return false;
+            return getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel;
+          }
+          return false;
+        });
+        const count = runnerOrders.reduce((sum, o) => sum + calculateOrderUnits(o, runner.id), 0);
+        if (count > maxOrdersInCycle) {
+          maxOrdersInCycle = count;
+        }
+      }
+
+      if (maxOrdersInCycle > 0 && completedOrdersCount >= maxOrdersInCycle) {
+        topRunnerBonus = 300;
+      }
+
+      // H. Overtime Pay: Base K900 / 208 hrs ≈ K4.33 / hr
       const normalOvertimeHours = cycleAttendance.reduce((sum, a) => sum + Number(a.normal_overtime_hours || 0), 0);
       const holidayOvertimeHours = cycleAttendance.reduce((sum, a) => sum + Number(a.holiday_overtime_hours || 0), 0);
-      const hourlyRate = 800 / 208; // ~3.846 K/hr
+      const hourlyRate = 900 / 208; // ~4.327 K/hr
       const normalOvertimePay = normalOvertimeHours * hourlyRate * 1.5;
       const holidayOvertimePay = holidayOvertimeHours * hourlyRate * 2.0;
       const overtimePay = Number((normalOvertimePay + holidayOvertimePay).toFixed(2));
 
       // Base Pay Earned: Responsibility + Attendance + Transport
       const basePayEarned = Number((responsibilitySalary + attendanceSalary + transportAllowance).toFixed(2));
-      const deductions = Math.max(0, 800 - responsibilitySalary) + Math.max(0, 200 - attendanceSalary);
+      const deductions = Math.max(0, 900 - responsibilitySalary) + Math.max(0, 200 - attendanceSalary);
 
       const totalPay = Number((
         responsibilitySalary + 
         attendanceSalary + 
         transportAllowance + 
         excessOrderIncentive + 
+        topRunnerBonus +
         teamLeaderManagementAllowance + 
         teamIncentive + 
         additionalPerformanceAward +
@@ -1490,6 +1521,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         attendanceSalary,
         transportAllowance,
         excessOrderIncentive,
+        topRunnerBonus,
         completedOrdersCount,
         excessOrdersCount,
         teamIncentive,
@@ -1684,7 +1716,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         const normalOT = Number(att?.normal_overtime_hours || 0);
         const holidayOT = Number(att?.holiday_overtime_hours || 0);
-        const dailyOTPay = Number(((normalOT * (800 / 208) * 1.5) + (holidayOT * (800 / 208) * 2.0)).toFixed(2));
+        const dailyOTPay = Number(((normalOT * (900 / 208) * 1.5) + (holidayOT * (900 / 208) * 2.0)).toFixed(2));
 
         const totalDailyEarned = Number((basePayEarned + orderBonus + teamVolumeBonus + dailyOTPay).toFixed(2));
 

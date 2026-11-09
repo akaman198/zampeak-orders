@@ -801,7 +801,7 @@ export default function GamersTab() {
                           {metrics.completedOrdersCount >= 26 ? (
                             <span className="text-cyber-green font-bold">✓ Target Met (+{metrics.completedOrdersCount - 26} Excess)</span>
                           ) : (
-                            <span>{26 - metrics.completedOrdersCount} needed for full K800</span>
+                            <span>{26 - metrics.completedOrdersCount} needed for full K900</span>
                           )}
                         </div>
                       </div>
@@ -846,7 +846,7 @@ export default function GamersTab() {
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-[11px]">
                               <div className="flex justify-between py-1 border-b border-cyber-border/20">
-                                <span className="text-slate-400">Responsibility Salary (K800 Target):</span>
+                                <span className="text-slate-400">Responsibility Salary (K900 Target):</span>
                                 <span className="font-bold text-cyber-cyan">
                                   K{(payroll.responsibilitySalary || 0).toFixed(2)} ({payroll.completedOrdersCount || 0}/26 orders)
                                 </span>
@@ -867,15 +867,26 @@ export default function GamersTab() {
                               </div>
 
                               <div className="flex justify-between py-1 border-b border-cyber-border/20">
-                                <span className="text-slate-400">Excess Order Incentive (K10/order):</span>
+                                <span className="text-slate-400">Excess Order Incentive (Tiered K40-K50):</span>
                                 <span className="font-bold text-cyber-green">
                                   K{(payroll.excessOrderIncentive || 0).toFixed(2)} 
                                   {(payroll.excessOrdersCount || 0) > 0 ? ` (+${payroll.excessOrdersCount} excess)` : ' (0 excess)'}
                                 </span>
                               </div>
 
+                              {(payroll.topRunnerBonus || 0) > 0 && (
+                                <div className="flex justify-between py-1 border-b border-cyber-border/20 bg-cyber-yellow/10 px-2 rounded">
+                                  <span className="text-cyber-yellow font-bold flex items-center gap-1">
+                                    👑 Top Runner Bonus (#1 in Month):
+                                  </span>
+                                  <span className="font-bold text-cyber-yellow font-mono text-glow-yellow">
+                                    +K{payroll.topRunnerBonus}
+                                  </span>
+                                </div>
+                              )}
+
                               <div className="flex justify-between py-1 border-b border-cyber-border/20">
-                                <span className="text-slate-400">Overtime Pay (Base K800 / 208 hrs):</span>
+                                <span className="text-slate-400">Overtime Pay (Base K900 / 208 hrs):</span>
                                 <span className="font-bold text-cyber-cyan">
                                   K{(payroll.overtimePay || 0).toFixed(2)}
                                   <span className="text-[9px] text-slate-500 font-normal ml-1">
