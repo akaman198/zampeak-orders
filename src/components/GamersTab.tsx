@@ -820,9 +820,9 @@ export default function GamersTab() {
                         <div className="text-xl font-black text-cyber-cyan mt-1">{metrics.completedOrdersCount} / 26</div>
                         <div className="text-[8px] text-slate-400 mt-0.5">
                           {metrics.completedOrdersCount >= 26 ? (
-                            <span className="text-cyber-green font-bold">✓ Target Met (+{metrics.completedOrdersCount - 26} Excess)</span>
+                            <span className="text-cyber-green font-bold">✓ Target Met (+{Number((metrics.completedOrdersCount - 26).toFixed(1))} Excess)</span>
                           ) : (
-                            <span>{26 - metrics.completedOrdersCount} needed for full K900</span>
+                            <span>{Number((26 - metrics.completedOrdersCount).toFixed(1))} needed for full K900</span>
                           )}
                         </div>
                       </div>

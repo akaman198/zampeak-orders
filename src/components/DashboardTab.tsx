@@ -370,7 +370,9 @@ export default function DashboardTab({
                 <div className="mt-2 text-[10px] text-slate-400 font-mono flex justify-between">
                   <span className="text-cyber-green font-bold">K{(gamerPayroll.responsibilitySalary || 0).toFixed(2)} Base</span>
                   <span className="text-slate-400">
-                    {(gamerPayroll.excessOrdersCount || 0) > 0 ? `+${gamerPayroll.excessOrdersCount} Excess` : `${Math.max(0, 26 - (gamerPayroll.completedOrdersCount || 0))} needed`}
+                    {(gamerPayroll.excessOrdersCount || 0) > 0 
+                      ? `+${gamerPayroll.excessOrdersCount} Excess` 
+                      : `${Number((Math.max(0, 26 - (gamerPayroll.completedOrdersCount || 0))).toFixed(1))} needed`}
                   </span>
                 </div>
               </div>

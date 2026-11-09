@@ -799,7 +799,7 @@ export default function OrdersTab() {
                         {runners.map(rId => {
                           const gamer = gamers.find(g => g.id === rId);
                           const stats = summary.gamerTotals[rId] || { volume: 0, dayVolume: 0, nightVolume: 0, homeVolume: 0, logsCount: 0 };
-                          const unitsCredited = Math.floor(stats.volume / 10);
+                          const unitsCredited = Number((stats.volume / 10).toFixed(1));
                           return (
                             <div key={rId} className="p-2 bg-slate-950/70 rounded border border-cyber-border/40 space-y-1">
                               <div className="flex justify-between items-center">
@@ -1148,7 +1148,7 @@ export default function OrdersTab() {
                               </div>
 
                               <span className="text-[9px] text-slate-500 font-mono block">
-                                {Math.floor(order.size_millions / 10)} Orders target (10M/unit)
+                                {Number((order.size_millions / 10).toFixed(1))} Orders target (10M/unit)
                               </span>
                             </div>
                           </td>

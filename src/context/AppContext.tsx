@@ -364,11 +364,11 @@ export const getOrderProgressSummary = (order: Order) => {
 };
 
 /**
- * Calculates the valid completed order count (in 10M units):
+ * Calculates the valid completed order count (in 10M units, supporting decimals e.g. 25M = 2.5 orders):
  * - Target Rule: For Orders (26 Target), only count completed orders from the 14th of September 2026 onwards.
  * - Non-completed orders (Running, Paused) or orders completed prior to Sept 14th return 0 for target unit counting.
- * - When daily_progress logs exist, awards units proportional to each runner's actual logged volume (1 unit per 10M).
- * - When no daily_progress logs exist, splits units equally across assigned runners.
+ * - When daily_progress logs exist, awards units proportional to each runner's actual logged volume (1 unit per 10M, e.g. 25M = 2.5 units).
+ * - When no daily_progress logs exist, splits units equally across assigned runners (e.g. 25M solo = 2.5 units).
  */
 export const calculateOrderUnits = (order: Order, forGamerId?: string): number => {
   const size = Number(order.size_millions || 0);
@@ -392,6 +392,11 @@ export const calculateOrderUnits = (order: Order, forGamerId?: string): number =
     }
   }
 
+  const formatUnits = (val: number): number => {
+    // Avoid floating point precision issues, clean to 2 decimal places e.g. 2.5
+    return Number((Math.round(val * 100) / 100).toFixed(2));
+  };
+
   // 1. If daily progress logs exist for this order, allocate units based on actual volume contributed!
   const logs = order.daily_progress || [];
   if (logs.length > 0) {
@@ -399,10 +404,10 @@ export const calculateOrderUnits = (order: Order, forGamerId?: string): number =
       const gamerVolume = logs
         .filter(l => l.gamer_id === forGamerId)
         .reduce((sum, l) => sum + Number(l.volume_millions || 0), 0);
-      return Math.floor(gamerVolume / 10);
+      return formatUnits(gamerVolume / 10);
     } else {
       const totalFarmed = logs.reduce((sum, l) => sum + Number(l.volume_millions || 0), 0);
-      return Math.floor(Math.min(size, totalFarmed) / 10);
+      return formatUnits(Math.min(size, totalFarmed) / 10);
     }
   }
 
@@ -410,14 +415,14 @@ export const calculateOrderUnits = (order: Order, forGamerId?: string): number =
   if (assignedRunners.length > 1) {
     if (forGamerId) {
       const runnerShareVolume = size / assignedRunners.length;
-      return Math.floor(runnerShareVolume / 10);
+      return formatUnits(runnerShareVolume / 10);
     } else {
-      return Math.floor(size / 10);
+      return formatUnits(size / 10);
     }
   }
 
   // 3. Single runner
-  return Math.floor(size / 10);
+  return formatUnits(size / 10);
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -1565,7 +1570,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return false;
       });
 
-      completedOrdersCount = gamerOrdersInCycle.reduce((sum, o) => sum + calculateOrderUnits(o, gamerId), 0);
+      completedOrdersCount = Number((gamerOrdersInCycle.reduce((sum, o) => sum + calculateOrderUnits(o, gamerId), 0)).toFixed(2));
     } else {
       const legacyCompleted = orders.filter(
         (o) => isGamerOnOrder(o, gamerId) && o.status === 'Completed' && getOrderPeriodLabel(o.completed_date || o.start_date) === cycleLabel
@@ -1688,7 +1693,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               }
               return false;
             });
-            const count = mOrders.reduce((sum, o) => sum + calculateOrderUnits(o, m.id), 0);
+            const count = Number((mOrders.reduce((sum, o) => sum + calculateOrderUnits(o, m.id), 0)).toFixed(2));
             return { gamer: m, count };
           });
 
@@ -1728,7 +1733,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
           return false;
         });
-        const count = runnerOrders.reduce((sum, o) => sum + calculateOrderUnits(o, runner.id), 0);
+        const count = Number((runnerOrders.reduce((sum, o) => sum + calculateOrderUnits(o, runner.id), 0)).toFixed(2));
         if (count > maxOrdersInCycle) {
           maxOrdersInCycle = count;
         }
