@@ -1891,16 +1891,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
       (a) => getAttendancePeriodLabel(a.date) === cycleLabel
     );
 
-    // Get all unique dates in the cycle attendance records or completed orders
+    // Get all unique dates in the cycle attendance records or completed orders or order daily progress
     const datesSet = new Set<string>();
     cycleAttendance.forEach((a) => datesSet.add(a.date));
     
     orders.forEach((o) => {
       if (o.status === 'Completed') {
-        const compDate = (o.completed_date || o.start_date).slice(0, 10);
-        if (getOrderPeriodLabel(compDate) === cycleLabel) {
+        const compDate = (o.completed_date || o.start_date || '').slice(0, 10);
+        if (compDate && getOrderPeriodLabel(compDate) === cycleLabel) {
           datesSet.add(compDate);
         }
+      }
+      if (o.daily_progress && Array.isArray(o.daily_progress)) {
+        o.daily_progress.forEach((log) => {
+          if (log.date) {
+            const logDate = log.date.slice(0, 10);
+            if (getOrderPeriodLabel(logDate) === cycleLabel) {
+              datesSet.add(logDate);
+            }
+          }
+        });
       }
     });
 
@@ -1919,7 +1929,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       activeGamers.forEach((gamer) => {
         // Attendance record for gamer on this date
         const att = attendance.find((a) => a.gamer_id === gamer.id && a.date === dateStr);
-        const farmedMillions = Number(att?.farmed_millions || 0);
         const attendanceStatus = att ? att.status : 'no_log';
         const isPresent = att && (att.status === 'present_on_time' || att.status === 'present_late');
 
@@ -1927,7 +1936,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const gamerCompletedOrders = orders.filter(
           (o) => isGamerOnOrder(o, gamer.id) &&
                  o.status === 'Completed' &&
-                 (o.completed_date || o.start_date?.slice(0, 10)) === dateStr
+                 ((o.completed_date?.slice(0, 10) || o.start_date?.slice(0, 10)) === dateStr)
         );
         let orderBonus = gamerCompletedOrders.reduce((sum, o) => {
           const size = Number(o.size_millions || 0);
@@ -1939,6 +1948,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const runners = getOrderRunners(o);
           return sum + (runners.length > 0 ? payout / runners.length : payout);
         }, 0);
+
+        // Farmed volume calculation directly from orders:
+        // 1. Direct daily progress entries logged by this gamer on this date across all orders
+        let orderFarmedMillions = 0;
+        let hasOrderProgressLogs = false;
+
+        orders.forEach((o) => {
+          if (o.daily_progress && Array.isArray(o.daily_progress)) {
+            const dayLogs = o.daily_progress.filter((l) => l.gamer_id === gamer.id && l.date?.slice(0, 10) === dateStr);
+            if (dayLogs.length > 0) {
+              hasOrderProgressLogs = true;
+              orderFarmedMillions += dayLogs.reduce((s, l) => s + Number(l.volume_millions || 0), 0);
+            }
+          }
+        });
+
+        // 2. Fallback: If no daily progress was logged on this date, check completed orders on this date without daily progress logs
+        if (!hasOrderProgressLogs && gamerCompletedOrders.length > 0) {
+          gamerCompletedOrders.forEach((o) => {
+            if (!o.daily_progress || o.daily_progress.length === 0) {
+              const runners = getOrderRunners(o);
+              const size = Number(o.size_millions || 0);
+              orderFarmedMillions += runners.length > 0 ? (size / runners.length) : size;
+            }
+          });
+        }
+
+        // 3. Fallback: If order volume is 0, check legacy attendance record farmed_millions
+        const farmedMillions = Number((orderFarmedMillions > 0 ? orderFarmedMillions : Number(att?.farmed_millions || 0)).toFixed(2));
 
         let basePayEarned = 0;
         let teamVolumeBonus = 0;
@@ -1998,8 +2036,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         const totalDailyEarned = Number((basePayEarned + orderBonus + teamVolumeBonus + dailyOTPay).toFixed(2));
 
-        // Include if gamer had attendance log or completed order or team volume bonus > 0 or overtime
-        if (att || gamerCompletedOrders.length > 0 || teamVolumeBonus > 0 || dailyOTPay > 0) {
+        // Include if gamer had attendance log, completed order, team volume bonus > 0, overtime, or farmed volume
+        if (att || gamerCompletedOrders.length > 0 || teamVolumeBonus > 0 || dailyOTPay > 0 || farmedMillions > 0) {
           result.push({
             date: dateStr,
             gamerId: gamer.id,

@@ -140,21 +140,20 @@ export default function DashboardTab({
   // Group/Team calculations for the cycle
   const teamLeaders = gamers.filter(g => g.gamer_role === 'team_leader' && g.status === 'active');
   
+  // Farmed assets for selected cycle (synced directly from order volumes & logs)
+  const cycleDailyEarnings = getDailyGamerEarnings(selectedCycle);
+  const cycleGamerFarmedMap = cycleDailyEarnings.reduce((map, r) => {
+    map[r.gamerId] = (map[r.gamerId] || 0) + (r.farmedMillions || 0);
+    return map;
+  }, {} as Record<string, number>);
+
   const teamSummaries = teamLeaders.map(tl => {
     const members = gamers.filter(g => g.team_leader_id === tl.id);
     const memberIds = members.map(m => m.id);
     const teamIds = [tl.id, ...memberIds];
     
-    // Sum attendance logs for team farmed assets (checking snapshot if present)
-    const teamAttendance = attendance.filter(a => {
-      if (getPayPeriodLabel(a.date) !== selectedCycle) return false;
-      if (a.gamer_id === tl.id) return true;
-      if (a.team_leader_id !== undefined && a.team_leader_id !== null) {
-        return a.team_leader_id === tl.id;
-      }
-      return memberIds.includes(a.gamer_id);
-    });
-    const totalAssets = teamAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
+    // Sum farmed assets for team (synced from order volumes)
+    const totalAssets = teamIds.reduce((sum, id) => sum + (cycleGamerFarmedMap[id] || 0), 0);
 
     const teamOrders = allOrders.filter(
       o => o.status === 'Completed' && teamIds.includes(o.gamer_id) && getOrderPeriodLabel(o.completed_date || o.start_date) === selectedCycle
@@ -171,8 +170,7 @@ export default function DashboardTab({
       totalPayout,
       gamerDetails: teamIds.map(id => {
         const g = gamers.find(gam => gam.id === id)!;
-        const gAttendance = teamAttendance.filter(a => a.gamer_id === id);
-        const assets = gAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
+        const assets = cycleGamerFarmedMap[id] || 0;
         
         const gOrders = teamOrders.filter(o => o.gamer_id === id);
         const payout = gOrders.reduce((sum, o) => sum + Number(o.payout), 0);
@@ -187,16 +185,9 @@ export default function DashboardTab({
     };
   });
 
-  // Gamers rankings (Assets Farmed in Millions during this cycle)
-  const cycleAttendance = attendance.filter(
-    a => getPayPeriodLabel(a.date) === selectedCycle
-  );
+  // Gamers rankings (Assets Farmed in Millions during this cycle, synced from orders)
   const gamerFarmedStats = gamers
-    .map(g => {
-      const gAttendance = cycleAttendance.filter(a => a.gamer_id === g.id);
-      const farmed = gAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
-      return { gamer: g, farmed };
-    })
+    .map(g => ({ gamer: g, farmed: cycleGamerFarmedMap[g.id] || 0 }))
     .filter(g => g.farmed > 0)
     .sort((a, b) => b.farmed - a.farmed)
     .slice(0, 4);
@@ -222,14 +213,17 @@ export default function DashboardTab({
   };
   
   const weeklyDates = getWeeklyDateRange();
-  const weeklyAttendance = attendance.filter(a => weeklyDates.includes(a.date));
+  const weeklyDailyEarnings = weeklyDates.flatMap(d => {
+    const cycleForDate = getPayPeriodLabel(d);
+    return getDailyGamerEarnings(cycleForDate).filter(r => r.date === d);
+  });
+  const weeklyGamerFarmedMap = weeklyDailyEarnings.reduce((map, r) => {
+    map[r.gamerId] = (map[r.gamerId] || 0) + (r.farmedMillions || 0);
+    return map;
+  }, {} as Record<string, number>);
   
   const weeklyGamerStats = gamers
-    .map(g => {
-      const gAttendance = weeklyAttendance.filter(a => a.gamer_id === g.id);
-      const farmed = gAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
-      return { gamer: g, farmed };
-    })
+    .map(g => ({ gamer: g, farmed: weeklyGamerFarmedMap[g.id] || 0 }))
     .filter(g => g.farmed > 0)
     .sort((a, b) => b.farmed - a.farmed)
     .slice(0, 4);
@@ -237,15 +231,8 @@ export default function DashboardTab({
   const weeklyTeamStats = teamLeaders
     .map(tl => {
       const members = gamers.filter(g => g.team_leader_id === tl.id);
-      const memberIds = members.map(m => m.id);
-      const teamAttendance = weeklyAttendance.filter(a => {
-        if (a.gamer_id === tl.id) return true;
-        if (a.team_leader_id !== undefined && a.team_leader_id !== null) {
-          return a.team_leader_id === tl.id;
-        }
-        return memberIds.includes(a.gamer_id);
-      });
-      const farmed = teamAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
+      const teamGamerIds = [tl.id, ...members.map(m => m.id)];
+      const farmed = teamGamerIds.reduce((sum, id) => sum + (weeklyGamerFarmedMap[id] || 0), 0);
       return {
         leaderId: tl.id,
         leaderName: tl.name,

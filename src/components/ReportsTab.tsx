@@ -137,11 +137,9 @@ export default function ReportsTab() {
     o => o.status === 'Completed' && getOrderPeriodLabel(o.completed_date || o.start_date) === selectedCycle
   );
   const totalCompletedMissions = cycleOrders.length;
-  const cycleAttendance = attendance.filter(a => getPayPeriodLabel(a.date) === selectedCycle);
-  const totalAssetsFarmedAll = cycleAttendance.reduce((sum, a) => sum + Number(a.farmed_millions || 0), 0);
-
-  // Daily Gamer Earnings
+  // Daily Gamer Earnings (synced directly from order volumes & logs)
   const dailyGamerEarnings = getDailyGamerEarnings(selectedCycle);
+  const totalAssetsFarmedAll = dailyGamerEarnings.reduce((sum, r) => sum + Number(r.farmedMillions || 0), 0);
   const availableDailyDates = Array.from(new Set(dailyGamerEarnings.map(r => r.date))).sort().reverse();
   const filteredDailyEarnings = dailyGamerEarnings.filter(r => {
     const matchesDate = selectedDailyDate === 'all' || r.date === selectedDailyDate;

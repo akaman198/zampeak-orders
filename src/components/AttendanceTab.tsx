@@ -9,17 +9,15 @@ import {
   Clock, 
   X, 
   Users, 
-  ShieldAlert,
-  Search,
-  CheckCircle2,
-  Sun,
-  Moon,
-  Zap,
-  Sparkles
+  ShieldAlert, 
+  Search, 
+  CheckCircle2, 
+  Sun, 
+  Moon 
 } from 'lucide-react';
 
 export default function AttendanceTab() {
-  const { gamers, attendance, orders, saveAttendance, role } = useApp();
+  const { gamers, attendance, saveAttendance, role } = useApp();
   
   // Format today's date in local YYYY-MM-DD
   const getTodayDateString = () => {
@@ -35,13 +33,11 @@ export default function AttendanceTab() {
   const [roleFilter, setRoleFilter] = useState<'all' | 'gamer' | 'team_leader' | 'technical_manager'>('all');
   const [shiftFilter, setShiftFilter] = useState<'all' | 'day' | 'night'>('all');
   const [saveStatus, setSaveStatus] = useState<{ [gamerId: string]: 'saving' | 'success' | 'error' }>({});
-  const [localFarmed, setLocalFarmed] = useState<{ [gamerId: string]: string }>({});
   const [localNormalOT, setLocalNormalOT] = useState<{ [gamerId: string]: string }>({});
   const [localHolidayOT, setLocalHolidayOT] = useState<{ [gamerId: string]: string }>({});
 
   const handleDateChange = (date: string) => {
     setSelectedDate(date);
-    setLocalFarmed({});
     setLocalNormalOT({});
     setLocalHolidayOT({});
   };
@@ -71,14 +67,6 @@ export default function AttendanceTab() {
     return record?.shift || 'day';
   };
 
-  const getGamerFarmedForDate = (gamerId: string) => {
-    if (localFarmed[gamerId] !== undefined) {
-      return localFarmed[gamerId];
-    }
-    const record = attendance.find(a => a.gamer_id === gamerId && a.date === selectedDate);
-    return record?.farmed_millions !== undefined ? String(record.farmed_millions) : '';
-  };
-
   const getGamerNormalOTForDate = (gamerId: string) => {
     if (localNormalOT[gamerId] !== undefined) {
       return localNormalOT[gamerId];
@@ -93,32 +81,6 @@ export default function AttendanceTab() {
     }
     const record = attendance.find(a => a.gamer_id === gamerId && a.date === selectedDate);
     return record?.holiday_overtime_hours !== undefined && record.holiday_overtime_hours > 0 ? String(record.holiday_overtime_hours) : '';
-  };
-
-  // Helper to compute volume logged on orders by this gamer on this specific date
-  const getGamerLoggedOrderVolumeForDate = (gamerId: string) => {
-    let total = 0;
-    let day = 0;
-    let night = 0;
-    let home = 0;
-    let logsCount = 0;
-
-    orders.forEach(order => {
-      if (order.daily_progress) {
-        order.daily_progress.forEach(log => {
-          if (log.gamer_id === gamerId && log.date === selectedDate) {
-            const vol = Number(log.volume_millions || 0);
-            total += vol;
-            logsCount += 1;
-            if (log.shift === 'day') day += vol;
-            else if (log.shift === 'night') night += vol;
-            else if (log.shift === 'home') home += vol;
-          }
-        });
-      }
-    });
-
-    return { total, day, night, home, logsCount };
   };
 
   const handleMarkAttendance = async (
@@ -160,22 +122,14 @@ export default function AttendanceTab() {
     await handleMarkAttendance(gamerId, currentStatus, undefined, undefined, undefined, nextShift);
   };
 
-  // Sync farmed millions directly from order logs
-  const handleSyncFromOrders = async (gamerId: string, loggedVolume: number) => {
-    const currentStatus = getGamerStatusForDate(gamerId) || 'present_on_time';
-    setLocalFarmed(prev => ({ ...prev, [gamerId]: String(loggedVolume) }));
-    await handleMarkAttendance(gamerId, currentStatus, loggedVolume);
-  };
-
   // Mark all filtered gamers present on-time in one click
   const handleMarkAllPresentOnTime = async () => {
     if (confirm(`Are you sure you want to mark all filtered operators Present (On-time) for ${selectedDate}?`)) {
       for (const gamer of filteredGamers) {
         const currentStatus = getGamerStatusForDate(gamer.id);
-        const currentFarmedStr = getGamerFarmedForDate(gamer.id);
-        const currentFarmed = parseFloat(currentFarmedStr) || 0;
+        const currentRecord = attendance.find(a => a.gamer_id === gamer.id && a.date === selectedDate);
         if (currentStatus !== 'present_on_time') {
-          await saveAttendance(gamer.id, selectedDate, 'present_on_time', currentFarmed);
+          await saveAttendance(gamer.id, selectedDate, 'present_on_time', currentRecord?.farmed_millions || 0);
         }
       }
     }
@@ -371,7 +325,6 @@ export default function AttendanceTab() {
                   <th className="py-3 px-3">Clearance ID</th>
                   <th className="py-3 px-3">Role / Level</th>
                   <th className="py-3 px-3 text-center">Shift</th>
-                  <th className="py-3 px-3 min-w-[190px]">Farmed Today (M)</th>
                   <th className="py-3 px-3 w-44">Overtime Hours</th>
                   <th className="py-3 px-3 text-center w-72">Mark Attendance Status</th>
                 </tr>
@@ -381,7 +334,6 @@ export default function AttendanceTab() {
                   const currentStatus = getGamerStatusForDate(gamer.id);
                   const currentShift = getGamerShiftForDate(gamer.id);
                   const statusState = saveStatus[gamer.id];
-                  const orderLogsToday = getGamerLoggedOrderVolumeForDate(gamer.id);
                   
                   let roleBadgeColor = 'border-slate-700 bg-slate-900/60 text-slate-400';
                   let roleText = 'GAMER';
@@ -392,9 +344,6 @@ export default function AttendanceTab() {
                     roleBadgeColor = 'border-cyber-amber/35 bg-cyber-amber/10 text-cyber-amber';
                     roleText = 'TEAM LDR';
                   }
-
-                  const currentFarmedVal = parseFloat(getGamerFarmedForDate(gamer.id)) || 0;
-                  const hasOrderDiff = orderLogsToday.total > 0 && currentFarmedVal !== orderLogsToday.total;
 
                   return (
                     <tr key={gamer.id} className="hover:bg-slate-900/25 transition-all">
@@ -449,67 +398,6 @@ export default function AttendanceTab() {
                             {currentShift === 'night' ? <Moon size={11} /> : <Sun size={11} />}
                             {currentShift === 'night' ? 'Night' : 'Day'}
                           </span>
-                        )}
-                      </td>
-
-                      {/* Farmed Today & Order Volume Sync */}
-                      <td className="py-3.5 px-3">
-                        {gamer.gamer_role !== 'technical_manager' ? (
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1.5 font-mono">
-                              <input 
-                                type="number"
-                                min="0"
-                                step="any"
-                                disabled={role === 'viewer'}
-                                value={getGamerFarmedForDate(gamer.id)}
-                                onChange={(e) => {
-                                  if (role === 'viewer') return;
-                                  setLocalFarmed(prev => ({ ...prev, [gamer.id]: e.target.value }));
-                                }}
-                                onBlur={() => {
-                                  if (role === 'viewer') return;
-                                  const valStr = localFarmed[gamer.id];
-                                  if (valStr === undefined) return;
-                                  const val = parseFloat(valStr) || 0;
-                                  handleMarkAttendance(gamer.id, currentStatus || 'present_on_time', val);
-                                  setLocalFarmed(prev => {
-                                    const next = { ...prev };
-                                    delete next[gamer.id];
-                                    return next;
-                                  });
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.currentTarget.blur();
-                                  }
-                                }}
-                                placeholder="0"
-                                className="w-20 bg-slate-950 border border-cyber-border/40 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-cyber-cyan text-right text-xs disabled:opacity-60 disabled:cursor-not-allowed"
-                              />
-                              <span className="text-[10px] text-slate-500 font-bold uppercase">M</span>
-                            </div>
-
-                            {/* Order Logs Integration Indicator */}
-                            {orderLogsToday.total > 0 && (
-                              <div className="flex items-center gap-1.5 text-[9px]">
-                                <span className="text-cyber-cyan font-bold flex items-center gap-0.5">
-                                  <Zap size={9} /> Orders: {orderLogsToday.total}M
-                                </span>
-                                {role === 'admin' && hasOrderDiff && (
-                                  <button
-                                    onClick={() => handleSyncFromOrders(gamer.id, orderLogsToday.total)}
-                                    title="Sync farmed amount from order logs"
-                                    className="bg-cyber-cyan/20 hover:bg-cyber-cyan text-cyber-cyan hover:text-slate-950 border border-cyber-cyan/40 px-1.5 py-0.2 rounded font-bold transition-all cursor-pointer"
-                                  >
-                                    Sync
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-slate-600 font-mono text-[10px] uppercase">N/A</span>
                         )}
                       </td>
 
