@@ -9,6 +9,7 @@ export interface OrderDailyProgress {
   id: string;
   order_id: string;
   gamer_id: string;
+  gamer_name?: string;
   date: string; // YYYY-MM-DD
   shift: ShiftType;
   volume_millions: number;
