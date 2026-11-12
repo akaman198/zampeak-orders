@@ -622,7 +622,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             };
           });
 
-          // Also merge attendance shift from local storage if not in DB
+          // Also merge attendance shift & overtime from local storage if not in DB
           const savedAttStr = safeLocalStorage.getItem('zampeak_attendance');
           const localAttMap = new Map();
           if (savedAttStr) {
@@ -635,7 +635,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
             const local = localAttMap.get(`${a.gamer_id}_${a.date}`);
             return {
               ...a,
-              shift: a.shift || local?.shift || 'day'
+              shift: a.shift || local?.shift || 'day',
+              normal_overtime_hours: a.normal_overtime_hours !== undefined && a.normal_overtime_hours !== null && Number(a.normal_overtime_hours) > 0
+                ? Number(a.normal_overtime_hours)
+                : (local?.normal_overtime_hours !== undefined ? Number(local.normal_overtime_hours) : Number(a.normal_overtime_hours || 0)),
+              holiday_overtime_hours: a.holiday_overtime_hours !== undefined && a.holiday_overtime_hours !== null && Number(a.holiday_overtime_hours) > 0
+                ? Number(a.holiday_overtime_hours)
+                : (local?.holiday_overtime_hours !== undefined ? Number(local.holiday_overtime_hours) : Number(a.holiday_overtime_hours || 0))
             };
           });
 
@@ -1464,13 +1470,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
           .upsert(payload, { onConflict: 'gamer_id,date' })
           .select();
 
-        if (error && (
-          error.message?.includes('shift') || 
-          error.message?.includes('overtime') || 
-          error.message?.includes('team_leader_id') || 
-          error.message?.includes('schema cache')
-        )) {
-          // Graceful fallback retry if shift/overtime/team_leader_id columns are not yet in Supabase table
+        // 1. If shift column is missing from Supabase table, retry with shift omitted but KEEP overtime hours!
+        if (error && (error.message?.includes('shift') || error.message?.includes('column "shift"'))) {
+          delete payload.shift;
+          const retryRes = await supabase
+            .from('attendance')
+            .upsert(payload, { onConflict: 'gamer_id,date' })
+            .select();
+          data = retryRes.data;
+          error = retryRes.error;
+        }
+
+        // 2. If overtime columns are also missing from Supabase table, retry with overtime omitted
+        if (error && (error.message?.includes('overtime') || error.message?.includes('schema cache'))) {
+          delete payload.normal_overtime_hours;
+          delete payload.holiday_overtime_hours;
           const fallbackPayload: any = {
             gamer_id: gamerId,
             date,
@@ -1478,6 +1492,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             farmed_millions: finalFarmedMillions,
             created_at: new Date().toISOString()
           };
+          if (currentTeamLeaderId) {
+            fallbackPayload.team_leader_id = currentTeamLeaderId;
+          }
           const retryRes = await supabase
             .from('attendance')
             .upsert(fallbackPayload, { onConflict: 'gamer_id,date' })
@@ -1490,7 +1507,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         
         setAttendance((prev) => {
           const filtered = prev.filter((a) => !(a.gamer_id === gamerId && a.date === date));
-          const upserted = data && data[0] ? { ...newRecord, ...data[0] } : newRecord;
+          const upserted = {
+            ...newRecord,
+            ...(data && data[0] ? data[0] : {}),
+            shift: finalShift,
+            normal_overtime_hours: finalNormalOT,
+            holiday_overtime_hours: finalHolidayOT
+          };
           const updated = [upserted, ...filtered];
           safeLocalStorage.setItem('zampeak_attendance', JSON.stringify(updated));
           return updated;

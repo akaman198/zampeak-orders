@@ -13,7 +13,9 @@ import {
   Search, 
   CheckCircle2, 
   Sun, 
-  Moon 
+  Moon,
+  Sparkles,
+  Save 
 } from 'lucide-react';
 
 export default function AttendanceTab() {
@@ -94,12 +96,30 @@ export default function AttendanceTab() {
     setSaveStatus(prev => ({ ...prev, [gamerId]: 'saving' }));
     const currentRecord = attendance.find(a => a.gamer_id === gamerId && a.date === selectedDate);
     const finalFarmed = farmedMillions !== undefined ? farmedMillions : (currentRecord?.farmed_millions || 0);
-    const finalNormal = normalOT !== undefined ? normalOT : (currentRecord?.normal_overtime_hours || 0);
-    const finalHoliday = holidayOT !== undefined ? holidayOT : (currentRecord?.holiday_overtime_hours || 0);
+    
+    // Pick from parameter if explicitly passed, otherwise check if user has a pending input in localNormalOT, otherwise keep existingRecord
+    const finalNormal = normalOT !== undefined 
+      ? normalOT 
+      : (localNormalOT[gamerId] !== undefined ? (parseFloat(localNormalOT[gamerId]) || 0) : (currentRecord?.normal_overtime_hours || 0));
+
+    const finalHoliday = holidayOT !== undefined 
+      ? holidayOT 
+      : (localHolidayOT[gamerId] !== undefined ? (parseFloat(localHolidayOT[gamerId]) || 0) : (currentRecord?.holiday_overtime_hours || 0));
+
     const finalShift = shift !== undefined ? shift : (currentRecord?.shift || 'day');
 
     const res = await saveAttendance(gamerId, selectedDate, status, finalFarmed, finalNormal, finalHoliday, finalShift);
     if (res.success) {
+      setLocalNormalOT(prev => {
+        const next = { ...prev };
+        delete next[gamerId];
+        return next;
+      });
+      setLocalHolidayOT(prev => {
+        const next = { ...prev };
+        delete next[gamerId];
+        return next;
+      });
       setSaveStatus(prev => ({ ...prev, [gamerId]: 'success' }));
       setTimeout(() => {
         setSaveStatus(prev => {
@@ -107,11 +127,27 @@ export default function AttendanceTab() {
           delete next[gamerId];
           return next;
         });
-      }, 1000);
+      }, 1500);
     } else {
       setSaveStatus(prev => ({ ...prev, [gamerId]: 'error' }));
       alert(`Error saving attendance: ${res.error}`);
     }
+  };
+
+  // Explicitly save overtime hours
+  const handleSaveOvertime = async (gamerId: string, normalVal?: number, holidayVal?: number) => {
+    const currentStatus = getGamerStatusForDate(gamerId) || 'present_on_time';
+    const currentRecord = attendance.find(a => a.gamer_id === gamerId && a.date === selectedDate);
+    
+    const finalNormal = normalVal !== undefined 
+      ? normalVal 
+      : (localNormalOT[gamerId] !== undefined ? (parseFloat(localNormalOT[gamerId]) || 0) : (currentRecord?.normal_overtime_hours || 0));
+      
+    const finalHoliday = holidayVal !== undefined 
+      ? holidayVal 
+      : (localHolidayOT[gamerId] !== undefined ? (parseFloat(localHolidayOT[gamerId]) || 0) : (currentRecord?.holiday_overtime_hours || 0));
+
+    await handleMarkAttendance(gamerId, currentStatus, undefined, finalNormal, finalHoliday);
   };
 
   // Toggle shift for an operator on this date
@@ -129,7 +165,15 @@ export default function AttendanceTab() {
         const currentStatus = getGamerStatusForDate(gamer.id);
         const currentRecord = attendance.find(a => a.gamer_id === gamer.id && a.date === selectedDate);
         if (currentStatus !== 'present_on_time') {
-          await saveAttendance(gamer.id, selectedDate, 'present_on_time', currentRecord?.farmed_millions || 0);
+          await saveAttendance(
+            gamer.id, 
+            selectedDate, 
+            'present_on_time', 
+            currentRecord?.farmed_millions || 0,
+            currentRecord?.normal_overtime_hours || 0,
+            currentRecord?.holiday_overtime_hours || 0,
+            currentRecord?.shift || 'day'
+          );
         }
       }
     }
@@ -402,73 +446,106 @@ export default function AttendanceTab() {
                       </td>
 
                       {/* Overtime (Normal 1.5x & Holiday 2.0x) */}
-                      <td className="py-3.5 px-3">
-                        <div className="flex items-center gap-2 font-mono text-[10px]">
-                          <div className="flex items-center gap-1">
-                            <span className="text-slate-500 font-bold" title="Normal Approved Overtime (1.5x rate: K5.77/hr)">1.5x:</span>
-                            <input 
-                              type="number"
-                              min="0"
-                              step="0.5"
-                              disabled={role === 'viewer'}
-                              value={getGamerNormalOTForDate(gamer.id)}
-                              onChange={(e) => {
-                                if (role === 'viewer') return;
-                                setLocalNormalOT(prev => ({ ...prev, [gamer.id]: e.target.value }));
-                              }}
-                              onBlur={() => {
-                                if (role === 'viewer') return;
-                                const valStr = localNormalOT[gamer.id];
-                                if (valStr === undefined) return;
-                                const val = parseFloat(valStr) || 0;
-                                handleMarkAttendance(gamer.id, currentStatus || 'present_on_time', undefined, val, undefined);
-                                setLocalNormalOT(prev => {
-                                  const next = { ...prev };
-                                  delete next[gamer.id];
-                                  return next;
-                                });
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') e.currentTarget.blur();
-                              }}
-                              placeholder="0"
-                              className="w-12 bg-slate-950 border border-cyber-border/40 rounded px-1.5 py-1 text-slate-200 focus:outline-none focus:border-cyber-cyan text-center text-xs"
-                            />
-                            <span className="text-[9px] text-slate-500">h</span>
+                      <td className="py-3.5 px-3 min-w-[200px]">
+                        <div className="space-y-1.5 font-mono text-[10px]">
+                          <div className="flex items-center gap-2">
+                            {/* 1.5x Normal Overtime */}
+                            <div className="flex items-center gap-1">
+                              <span className="text-slate-400 font-bold" title="Normal Approved Overtime (1.5x rate: K6.49/hr)">1.5x:</span>
+                              <input 
+                                type="number"
+                                min="0"
+                                step="0.5"
+                                disabled={role === 'viewer'}
+                                value={getGamerNormalOTForDate(gamer.id)}
+                                onChange={(e) => {
+                                  if (role === 'viewer') return;
+                                  setLocalNormalOT(prev => ({ ...prev, [gamer.id]: e.target.value }));
+                                }}
+                                onBlur={(e) => {
+                                  if (role === 'viewer') return;
+                                  const val = parseFloat(e.target.value) || 0;
+                                  handleSaveOvertime(gamer.id, val, undefined);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.currentTarget.blur();
+                                  }
+                                }}
+                                placeholder="0"
+                                className="w-12 bg-slate-950 border border-cyber-border/40 focus:border-cyber-cyan rounded px-1.5 py-1 text-slate-200 focus:outline-none text-center text-xs"
+                              />
+                              <span className="text-[9px] text-slate-500">h</span>
+                            </div>
+
+                            {/* 2.0x Holiday Overtime */}
+                            <div className="flex items-center gap-1">
+                              <span className="text-slate-400 font-bold" title="Holiday / Rest Day Overtime (2.0x rate: K8.65/hr)">2.0x:</span>
+                              <input 
+                                type="number"
+                                min="0"
+                                step="0.5"
+                                disabled={role === 'viewer'}
+                                value={getGamerHolidayOTForDate(gamer.id)}
+                                onChange={(e) => {
+                                  if (role === 'viewer') return;
+                                  setLocalHolidayOT(prev => ({ ...prev, [gamer.id]: e.target.value }));
+                                }}
+                                onBlur={(e) => {
+                                  if (role === 'viewer') return;
+                                  const val = parseFloat(e.target.value) || 0;
+                                  handleSaveOvertime(gamer.id, undefined, val);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.currentTarget.blur();
+                                  }
+                                }}
+                                placeholder="0"
+                                className="w-12 bg-slate-950 border border-cyber-border/40 focus:border-cyber-cyan rounded px-1.5 py-1 text-slate-200 focus:outline-none text-center text-xs"
+                              />
+                              <span className="text-[9px] text-slate-500">h</span>
+                            </div>
                           </div>
 
-                          <div className="flex items-center gap-1">
-                            <span className="text-slate-500 font-bold" title="Holiday / Rest Day Overtime (2.0x rate: K7.69/hr)">2.0x:</span>
-                            <input 
-                              type="number"
-                              min="0"
-                              step="0.5"
-                              disabled={role === 'viewer'}
-                              value={getGamerHolidayOTForDate(gamer.id)}
-                              onChange={(e) => {
-                                if (role === 'viewer') return;
-                                setLocalHolidayOT(prev => ({ ...prev, [gamer.id]: e.target.value }));
-                              }}
-                              onBlur={() => {
-                                if (role === 'viewer') return;
-                                const valStr = localHolidayOT[gamer.id];
-                                if (valStr === undefined) return;
-                                const val = parseFloat(valStr) || 0;
-                                handleMarkAttendance(gamer.id, currentStatus || 'present_on_time', undefined, undefined, val);
-                                setLocalHolidayOT(prev => {
-                                  const next = { ...prev };
-                                  delete next[gamer.id];
-                                  return next;
-                                });
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') e.currentTarget.blur();
-                              }}
-                              placeholder="0"
-                              className="w-12 bg-slate-950 border border-cyber-border/40 rounded px-1.5 py-1 text-slate-200 focus:outline-none focus:border-cyber-cyan text-center text-xs"
-                            />
-                            <span className="text-[9px] text-slate-500">h</span>
-                          </div>
+                          {/* Live Overtime Calculation & Feedback Badge */}
+                          {(() => {
+                            const nHours = localNormalOT[gamer.id] !== undefined 
+                              ? (parseFloat(localNormalOT[gamer.id]) || 0) 
+                              : (attendance.find(a => a.gamer_id === gamer.id && a.date === selectedDate)?.normal_overtime_hours || 0);
+                            const hHours = localHolidayOT[gamer.id] !== undefined 
+                              ? (parseFloat(localHolidayOT[gamer.id]) || 0) 
+                              : (attendance.find(a => a.gamer_id === gamer.id && a.date === selectedDate)?.holiday_overtime_hours || 0);
+                            
+                            const totalHours = nHours + hHours;
+                            const otPay = Number(((nHours * (900 / 208) * 1.5) + (hHours * (900 / 208) * 2.0)).toFixed(2));
+                            const hasUnsavedChanges = localNormalOT[gamer.id] !== undefined || localHolidayOT[gamer.id] !== undefined;
+
+                            if (totalHours > 0 || hasUnsavedChanges) {
+                              return (
+                                <div className="flex items-center justify-between text-[9px] pt-0.5">
+                                  <span className="text-cyber-cyan font-bold flex items-center gap-1">
+                                    <Sparkles size={10} /> +K{otPay.toFixed(2)} OT
+                                  </span>
+                                  {hasUnsavedChanges && role === 'admin' ? (
+                                    <button
+                                      onClick={() => handleSaveOvertime(gamer.id)}
+                                      className="bg-cyber-cyan/20 hover:bg-cyber-cyan text-cyber-cyan hover:text-slate-950 border border-cyber-cyan/40 px-1.5 py-0.5 rounded font-bold transition-all cursor-pointer text-[8px] flex items-center gap-0.5"
+                                      title="Save entered overtime hours"
+                                    >
+                                      <Save size={9} />
+                                      Save OT
+                                    </button>
+                                  ) : (
+                                    statusState === 'success' && (
+                                      <span className="text-cyber-green text-[8px] font-bold">✓ Saved</span>
+                                    )
+                                  )}
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                       </td>
 
