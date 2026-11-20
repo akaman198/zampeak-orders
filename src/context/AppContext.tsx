@@ -425,6 +425,28 @@ export const calculateOrderUnits = (order: Order, forGamerId?: string): number =
   return formatUnits(size / 10);
 };
 
+// Safe redundant backup helper for order daily volume progress logs
+const getLogsBackup = (): Record<string, OrderDailyProgress[]> => {
+  const str = safeLocalStorage.getItem('zampeak_order_logs_backup');
+  if (!str) return {};
+  try {
+    return JSON.parse(str);
+  } catch {
+    return {};
+  }
+};
+
+const saveLogsBackup = (orderId: string, orderNumber: string, logs: OrderDailyProgress[]) => {
+  try {
+    const backup = getLogsBackup();
+    if (orderId) backup[orderId] = logs;
+    if (orderNumber) backup[orderNumber] = logs;
+    safeLocalStorage.setItem('zampeak_order_logs_backup', JSON.stringify(backup));
+  } catch (e) {
+    console.warn('Failed to save logs backup:', e);
+  }
+};
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<'admin' | 'viewer' | 'gamer'>('admin');
@@ -592,30 +614,96 @@ export function AppProvider({ children }: { children: ReactNode }) {
         } else {
           // Merge local cache for unmigrated fields (progress_millions, co_gamer_id, assigned_gamer_ids, daily_progress)
           const savedOrdersStr = safeLocalStorage.getItem('zampeak_orders');
-          const localOrdersMap = new Map();
+          const localOrdersMap = new Map<string, Order>();
           if (savedOrdersStr) {
             try {
               const parsed: Order[] = JSON.parse(savedOrdersStr);
-              parsed.forEach(o => localOrdersMap.set(o.id, o));
+              parsed.forEach(o => {
+                if (o.id) localOrdersMap.set(o.id, o);
+                if (o.order_number) localOrdersMap.set(o.order_number, o);
+              });
             } catch (e) {}
           }
 
+          const logsBackup = getLogsBackup();
+
           const mergedOrders = (ordersData || []).map(o => {
-            const local = localOrdersMap.get(o.id);
-            const assigned = (o.assigned_gamer_ids && o.assigned_gamer_ids.length > 0) 
+            const local = localOrdersMap.get(o.id) || (o.order_number ? localOrdersMap.get(o.order_number) : undefined);
+            const assigned: string[] = (o.assigned_gamer_ids && o.assigned_gamer_ids.length > 0) 
               ? o.assigned_gamer_ids 
               : (local?.assigned_gamer_ids && local.assigned_gamer_ids.length > 0)
                 ? local.assigned_gamer_ids
                 : (o.co_gamer_id ? [o.gamer_id, o.co_gamer_id] : [o.gamer_id]);
-            const progressLogs = (o.daily_progress && Array.isArray(o.daily_progress))
-              ? o.daily_progress
-              : (local?.daily_progress && Array.isArray(local.daily_progress))
-                ? local.daily_progress
-                : [];
+
+            // Gather candidate logs from Supabase, local cache, and backup store
+            const dbLogs: OrderDailyProgress[] = Array.isArray(o.daily_progress) ? o.daily_progress : [];
+            const localLogs: OrderDailyProgress[] = Array.isArray(local?.daily_progress) ? local.daily_progress : [];
+            const backupLogsById: OrderDailyProgress[] = logsBackup[o.id] || [];
+            const backupLogsByNum: OrderDailyProgress[] = o.order_number ? (logsBackup[o.order_number] || []) : [];
+
+            // Merge and deduplicate all candidates
+            const logMap = new Map<string, OrderDailyProgress>();
+            const addLog = (l: OrderDailyProgress) => {
+              if (!l || !l.gamer_id) return;
+              const key = l.id || `${l.date}_${l.gamer_id}_${l.shift}_${l.volume_millions}`;
+              if (!logMap.has(key)) {
+                logMap.set(key, l);
+              }
+            };
+
+            dbLogs.forEach(addLog);
+            localLogs.forEach(addLog);
+            backupLogsById.forEach(addLog);
+            backupLogsByNum.forEach(addLog);
+
+            let progressLogs = Array.from(logMap.values());
+
+            // Fallback reconstruction: If an order has recorded progress or is completed, but has 0 logs
+            if (progressLogs.length === 0 && (Number(o.progress_millions || 0) > 0 || o.status === 'Completed')) {
+              const totalVol = Number(o.progress_millions) || Number(o.size_millions) || 0;
+              if (totalVol > 0) {
+                const logDate = (o.completed_date || o.start_date || new Date().toISOString()).slice(0, 10);
+                if (assigned.length > 1) {
+                  const share = Number((totalVol / assigned.length).toFixed(1));
+                  assigned.forEach((runnerId, idx) => {
+                    progressLogs.push({
+                      id: `fallback-${o.id}-${idx}`,
+                      order_id: o.id,
+                      gamer_id: runnerId,
+                      date: logDate,
+                      shift: 'day',
+                      volume_millions: share,
+                      notes: 'Synthesized completed volume record',
+                      created_at: new Date().toISOString()
+                    });
+                  });
+                } else {
+                  progressLogs.push({
+                    id: `fallback-${o.id}`,
+                    order_id: o.id,
+                    gamer_id: o.gamer_id || assigned[0],
+                    date: logDate,
+                    shift: 'day',
+                    volume_millions: totalVol,
+                    notes: 'Synthesized completed volume record',
+                    created_at: new Date().toISOString()
+                  });
+                }
+              }
+            }
+
+            // Sync to backup store
+            if (progressLogs.length > 0) {
+              saveLogsBackup(o.id, o.order_number, progressLogs);
+            }
+
+            const calculatedProgress = progressLogs.length > 0
+              ? progressLogs.reduce((sum, l) => sum + Number(l.volume_millions || 0), 0)
+              : (o.progress_millions !== undefined ? Number(o.progress_millions) : (local?.progress_millions !== undefined ? Number(local.progress_millions) : (o.status === 'Completed' ? Number(o.size_millions) : 0)));
 
             return {
               ...o,
-              progress_millions: o.progress_millions !== undefined ? Number(o.progress_millions) : (local?.progress_millions !== undefined ? Number(local.progress_millions) : (o.status === 'Completed' ? Number(o.size_millions) : 0)),
+              progress_millions: calculatedProgress,
               co_gamer_id: o.co_gamer_id !== undefined ? o.co_gamer_id : (local?.co_gamer_id || null),
               assigned_gamer_ids: assigned,
               daily_progress: progressLogs
@@ -671,7 +759,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (savedGamers && savedOrders) {
       const rawOrders: Order[] = JSON.parse(savedOrders);
-      const finalOrders = applySept14ResetMigration(rawOrders);
+      const logsBackup = getLogsBackup();
+      
+      const enrichedOrders = rawOrders.map(o => {
+        let logs = o.daily_progress || [];
+        const backupLogs = logsBackup[o.id] || (o.order_number ? logsBackup[o.order_number] : []) || [];
+        if (backupLogs.length > 0) {
+          const logMap = new Map<string, OrderDailyProgress>();
+          logs.forEach(l => {
+            const key = l.id || `${l.date}_${l.gamer_id}_${l.shift}_${l.volume_millions}`;
+            logMap.set(key, l);
+          });
+          backupLogs.forEach(l => {
+            const key = l.id || `${l.date}_${l.gamer_id}_${l.shift}_${l.volume_millions}`;
+            if (!logMap.has(key)) logMap.set(key, l);
+          });
+          logs = Array.from(logMap.values());
+        }
+
+        // Fallback for completed orders
+        if (logs.length === 0 && (Number(o.progress_millions || 0) > 0 || o.status === 'Completed')) {
+          const totalVol = Number(o.progress_millions) || Number(o.size_millions) || 0;
+          if (totalVol > 0) {
+            const logDate = (o.completed_date || o.start_date || new Date().toISOString()).slice(0, 10);
+            logs = [{
+              id: `fallback-${o.id}`,
+              order_id: o.id,
+              gamer_id: o.gamer_id,
+              date: logDate,
+              shift: 'day',
+              volume_millions: totalVol,
+              notes: 'Synthesized completed volume record',
+              created_at: new Date().toISOString()
+            }];
+          }
+        }
+
+        return {
+          ...o,
+          daily_progress: logs
+        };
+      });
+
+      const finalOrders = applySept14ResetMigration(enrichedOrders);
       setGamers(JSON.parse(savedGamers));
       setOrders(finalOrders);
       setAttendance(savedAttendance ? JSON.parse(savedAttendance) : []);
@@ -1139,7 +1269,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           error.message?.includes('daily_progress') || 
           error.message?.includes('co_gamer_id') || 
           error.message?.includes('progress_millions') || 
-          error.message?.includes('schema cache')
+          error.message?.includes('schema cache') ||
+          (error as any).code === '42703' ||
+          (error as any).code === 'PGRST204'
         )) {
           // Graceful fallback retry if custom columns haven't been added to Supabase table yet
           const fallbackOrder: any = { ...newOrder };
@@ -1151,6 +1283,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           error = retryRes.error;
         }
         if (error) throw error;
+        if (initialLogs.length > 0) {
+          saveLogsBackup(newOrder.id, newOrder.order_number, initialLogs);
+        }
         setOrders((prev) => {
           const updated = [newOrder, ...prev];
           safeLocalStorage.setItem('zampeak_orders', JSON.stringify(updated));
@@ -1162,6 +1297,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { success: false, error: err.message };
       }
     } else {
+      if (initialLogs.length > 0) {
+        saveLogsBackup(newOrder.id, newOrder.order_number, initialLogs);
+      }
       const updated = [newOrder, ...orders];
       setOrders(updated);
       safeLocalStorage.setItem('zampeak_orders', JSON.stringify(updated));
@@ -1237,7 +1375,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           error.message?.includes('daily_progress') || 
           error.message?.includes('co_gamer_id') || 
           error.message?.includes('progress_millions') || 
-          error.message?.includes('schema cache')
+          error.message?.includes('schema cache') ||
+          (error as any).code === '42703' ||
+          (error as any).code === 'PGRST204'
         )) {
           // Graceful fallback retry if custom columns haven't been added to Supabase table yet
           delete updates.assigned_gamer_ids;
@@ -1248,6 +1388,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           error = retryRes.error;
         }
         if (error) throw error;
+
+        if (finalDailyProgress.length > 0) {
+          saveLogsBackup(id, orderNumber, finalDailyProgress);
+        }
 
         setOrders((prev) => {
           const updated = prev.map((o) => (o.id === id ? { 
@@ -1269,6 +1413,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { success: false, error: err.message };
       }
     } else {
+      if (finalDailyProgress.length > 0) {
+        saveLogsBackup(id, orderNumber, finalDailyProgress);
+      }
       const updated = orders.map((o) =>
         o.id === id
           ? {
@@ -1299,7 +1446,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         const { error } = await supabase.from('orders').delete().eq('id', id);
         if (error) throw error;
-        setOrders((prev) => prev.filter((o) => o.id !== id));
+        setOrders((prev) => {
+          const updated = prev.filter((o) => o.id !== id);
+          safeLocalStorage.setItem('zampeak_orders', JSON.stringify(updated));
+          return updated;
+        });
         return { success: true };
       } catch (err: any) {
         console.error('Supabase error, deleting order:', err);
@@ -1329,9 +1480,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           .eq('id', id);
         if (error) throw error;
 
-        setOrders((prev) =>
-          prev.map((o) => (o.id === id ? { ...o, status, completed_date: completedDate || undefined } : o))
-        );
+        setOrders((prev) => {
+          const updated = prev.map((o) => (o.id === id ? { ...o, status, completed_date: completedDate || undefined } : o));
+          safeLocalStorage.setItem('zampeak_orders', JSON.stringify(updated));
+          return updated;
+        });
         return { success: true };
       } catch (err: any) {
         console.error('Supabase error, updating status:', err);
@@ -1368,6 +1521,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const updatedLogs = [...currentLogs, newLog];
     const newTotalMade = updatedLogs.reduce((sum, l) => sum + Number(l.volume_millions || 0), 0);
 
+    // Save to redundant backup immediately
+    saveLogsBackup(order.id, order.order_number, updatedLogs);
+
     // Ensure the contributing gamer is registered in assigned_gamer_ids
     const currentAssigned = getOrderRunners(order);
     const updatedAssigned = currentAssigned.includes(entry.gamer_id) ? currentAssigned : [...currentAssigned, entry.gamer_id];
@@ -1398,6 +1554,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const currentLogs = order.daily_progress || [];
     const updatedLogs = currentLogs.filter((l) => l.id !== logId);
     const newTotalMade = updatedLogs.reduce((sum, l) => sum + Number(l.volume_millions || 0), 0);
+
+    // Save to redundant backup immediately
+    saveLogsBackup(order.id, order.order_number, updatedLogs);
 
     return await updateOrder(
       order.id,

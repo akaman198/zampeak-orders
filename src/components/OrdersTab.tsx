@@ -325,6 +325,10 @@ export default function OrdersTab() {
     if (res.success) {
       setLogVolume('');
       setLogNotes('');
+      const refreshed = orders.find(o => o.id === activeLogOrder.id);
+      if (refreshed) {
+        setActiveLogOrder(refreshed);
+      }
     } else {
       setLogError(res.error || 'Failed to record daily progress.');
     }
@@ -334,7 +338,13 @@ export default function OrdersTab() {
   const handleDeleteLogEntry = async (logId: string) => {
     if (!activeLogOrder) return;
     if (!confirm('Are you sure you want to remove this volume log entry?')) return;
-    await deleteOrderDailyProgress(activeLogOrder.id, logId);
+    const res = await deleteOrderDailyProgress(activeLogOrder.id, logId);
+    if (res.success) {
+      const refreshed = orders.find(o => o.id === activeLogOrder.id);
+      if (refreshed) {
+        setActiveLogOrder(refreshed);
+      }
+    }
   };
 
   const toggleSort = (field: 'date' | 'order_number' | 'size' | 'payout') => {
@@ -737,56 +747,58 @@ export default function OrdersTab() {
       )}
 
       {/* Daily Volume & Shift Progress Logging Modal */}
-      {activeLogOrder && (
-        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="tactical-panel p-6 rounded clip-corners border border-cyber-cyan/50 w-full max-w-2xl relative my-8 font-mono text-xs">
-            <div className="hud-grid"></div>
+      {activeLogOrder && (() => {
+        const currentOrder = orders.find(o => o.id === activeLogOrder.id) || activeLogOrder;
+        const summary = getOrderProgressSummary(currentOrder);
+        const runners = getOrderRunners(currentOrder);
+        const currentLogs = currentOrder.daily_progress || [];
 
-            {/* Modal Header */}
-            <div className="flex justify-between items-start border-b border-cyber-cyan/30 pb-3 mb-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-cyber-cyan font-black text-sm uppercase tracking-wider">
-                    [Daily Volume &amp; Shift Log]
-                  </span>
-                  <span className="bg-cyber-cyan/20 text-cyber-cyan border border-cyber-cyan/40 px-2 py-0.5 rounded text-[10px] font-bold">
-                    {activeLogOrder.order_number}
-                  </span>
+        return (
+          <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+            <div className="tactical-panel p-6 rounded clip-corners border border-cyber-cyan/50 w-full max-w-2xl relative my-8 font-mono text-xs">
+              <div className="hud-grid"></div>
+
+              {/* Modal Header */}
+              <div className="flex justify-between items-start border-b border-cyber-cyan/30 pb-3 mb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-cyber-cyan font-black text-sm uppercase tracking-wider">
+                      [Daily Volume &amp; Shift Log]
+                    </span>
+                    <span className="bg-cyber-cyan/20 text-cyber-cyan border border-cyber-cyan/40 px-2 py-0.5 rounded text-[10px] font-bold">
+                      {currentOrder.order_number}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Record daily volumes made by employees on Day Shift, Night Shift, or Home/Mobile sessions.
+                  </p>
                 </div>
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  Record daily volumes made by employees on Day Shift, Night Shift, or Home/Mobile sessions.
-                </p>
+                <button 
+                  onClick={() => setActiveLogOrder(null)} 
+                  className="text-slate-400 hover:text-slate-200 transition-colors p-1"
+                >
+                  <X size={18} />
+                </button>
               </div>
-              <button 
-                onClick={() => setActiveLogOrder(null)} 
-                className="text-slate-400 hover:text-slate-200 transition-colors p-1"
-              >
-                <X size={18} />
-              </button>
-            </div>
 
-            {/* Order Progress Status Bar */}
-            {(() => {
-              const summary = getOrderProgressSummary(activeLogOrder);
-              const runners = getOrderRunners(activeLogOrder);
-              return (
-                <div className="space-y-4">
-                  {/* Progress Header Card */}
-                  <div className="p-3 bg-slate-900/80 rounded border border-cyber-border/60 space-y-2">
-                    <div className="flex justify-between items-center text-xs">
-                      <div>
-                        <span className="text-slate-400 uppercase text-[10px]">Total Farmed So Far: </span>
-                        <span className="text-cyber-green font-bold text-sm">{formatM(summary.totalMade)}M</span>
-                        <span className="text-slate-500 text-[10px]"> / {formatM(activeLogOrder.size_millions)}M Target</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 uppercase text-[10px]">Remaining: </span>
-                        <span className={`font-bold text-sm ${summary.remaining > 0 ? 'text-cyber-amber' : 'text-cyber-green'}`}>
-                          {formatM(summary.remaining)}M
-                        </span>
-                        <span className="text-cyber-cyan text-[10px] ml-1.5 font-bold">({summary.percentage}%)</span>
-                      </div>
+              {/* Order Progress Status Bar */}
+              <div className="space-y-4">
+                {/* Progress Header Card */}
+                <div className="p-3 bg-slate-900/80 rounded border border-cyber-border/60 space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <div>
+                      <span className="text-slate-400 uppercase text-[10px]">Total Farmed So Far: </span>
+                      <span className="text-cyber-green font-bold text-sm">{formatM(summary.totalMade)}M</span>
+                      <span className="text-slate-500 text-[10px]"> / {formatM(currentOrder.size_millions)}M Target</span>
                     </div>
+                    <div>
+                      <span className="text-slate-400 uppercase text-[10px]">Remaining: </span>
+                      <span className={`font-bold text-sm ${summary.remaining > 0 ? 'text-cyber-amber' : 'text-cyber-green'}`}>
+                        {formatM(summary.remaining)}M
+                      </span>
+                      <span className="text-cyber-cyan text-[10px] ml-1.5 font-bold">({summary.percentage}%)</span>
+                    </div>
+                  </div>
 
                     {/* Progress Bar */}
                     <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden border border-cyber-border/40">
@@ -956,10 +968,10 @@ export default function OrdersTab() {
                   {/* Volume Logs History Table */}
                   <div className="space-y-2">
                     <span className="text-[10px] text-slate-400 uppercase font-bold block">
-                      📜 Logged Progress History ({activeLogOrder.daily_progress?.length || 0} entries):
+                      📜 Logged Progress History ({currentLogs.length} entries):
                     </span>
 
-                    {(!activeLogOrder.daily_progress || activeLogOrder.daily_progress.length === 0) ? (
+                    {currentLogs.length === 0 ? (
                       <div className="p-4 bg-slate-950/40 rounded border border-cyber-border/30 text-center text-slate-500 italic">
                         No individual daily volume logs recorded yet for this order. Use the form above to record shift contributions.
                       </div>
@@ -977,7 +989,7 @@ export default function OrdersTab() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-cyber-border/20 text-xs">
-                            {activeLogOrder.daily_progress.map(log => {
+                            {currentLogs.map(log => {
                               const gamer = gamers.find(g => g.id === log.gamer_id);
                               return (
                                 <tr key={log.id} className="hover:bg-slate-900/50">
@@ -1009,11 +1021,10 @@ export default function OrdersTab() {
                     )}
                   </div>
                 </div>
-              );
-            })()}
-          </div>
-        </div>
-      )}
+              </div>
+            </div>
+          );
+        })()}
 
       {/* Main Order View & Standby Panel */}
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
