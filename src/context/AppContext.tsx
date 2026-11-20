@@ -1261,28 +1261,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
       created_at: new Date().toISOString(),
     };
 
-    if (!isDemo && supabase) {
+    if (!isDemo) {
       try {
-        let { error } = await supabase.from('orders').insert([newOrder]);
-        if (error && (
-          error.message?.includes('assigned_gamer_ids') || 
-          error.message?.includes('daily_progress') || 
-          error.message?.includes('co_gamer_id') || 
-          error.message?.includes('progress_millions') || 
-          error.message?.includes('schema cache') ||
-          (error as any).code === '42703' ||
-          (error as any).code === 'PGRST204'
-        )) {
-          // Graceful fallback retry if custom columns haven't been added to Supabase table yet
-          const fallbackOrder: any = { ...newOrder };
-          delete fallbackOrder.assigned_gamer_ids;
-          delete fallbackOrder.daily_progress;
-          delete fallbackOrder.co_gamer_id;
-          delete fallbackOrder.progress_millions;
-          const retryRes = await supabase.from('orders').insert([fallbackOrder]);
-          error = retryRes.error;
+        let savedApi = false;
+        try {
+          const apiRes = await fetch('/api/create-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order: newOrder })
+          });
+          const apiJson = await apiRes.json();
+          if (apiRes.ok && apiJson.success) savedApi = true;
+        } catch {}
+
+        if (!savedApi && supabase) {
+          let { error } = await supabase.from('orders').insert([newOrder]);
+          if (error && (
+            error.message?.includes('assigned_gamer_ids') || 
+            error.message?.includes('daily_progress') || 
+            error.message?.includes('co_gamer_id') || 
+            error.message?.includes('progress_millions') || 
+            error.message?.includes('schema cache') ||
+            (error as any).code === '42703' ||
+            (error as any).code === 'PGRST204'
+          )) {
+            const fallbackOrder: any = { ...newOrder };
+            delete fallbackOrder.assigned_gamer_ids;
+            delete fallbackOrder.daily_progress;
+            delete fallbackOrder.co_gamer_id;
+            delete fallbackOrder.progress_millions;
+            const retryRes = await supabase.from('orders').insert([fallbackOrder]);
+            error = retryRes.error;
+          }
+          if (error) throw error;
         }
-        if (error) throw error;
+
         if (initialLogs.length > 0) {
           saveLogsBackup(newOrder.id, newOrder.order_number, initialLogs);
         }
@@ -1293,7 +1306,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
         return { success: true };
       } catch (err: any) {
-        console.error('Supabase error, adding order:', err);
+        console.error('Error adding order:', err);
         return { success: false, error: err.message };
       }
     } else {
@@ -1369,25 +1382,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
           completed_date: completedDate || null
         };
 
-        let { error } = await supabase.from('orders').update(updates).eq('id', id);
-        if (error && (
-          error.message?.includes('assigned_gamer_ids') || 
-          error.message?.includes('daily_progress') || 
-          error.message?.includes('co_gamer_id') || 
-          error.message?.includes('progress_millions') || 
-          error.message?.includes('schema cache') ||
-          (error as any).code === '42703' ||
-          (error as any).code === 'PGRST204'
-        )) {
-          // Graceful fallback retry if custom columns haven't been added to Supabase table yet
-          delete updates.assigned_gamer_ids;
-          delete updates.daily_progress;
-          delete updates.co_gamer_id;
-          delete updates.progress_millions;
-          const retryRes = await supabase.from('orders').update(updates).eq('id', id);
-          error = retryRes.error;
+        // 1. Try server API route first (uses administrative service role key, guaranteeing persistence)
+        let savedSuccessfully = false;
+        try {
+          const apiRes = await fetch('/api/update-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, updates })
+          });
+          const apiJson = await apiRes.json();
+          if (apiRes.ok && apiJson.success) {
+            savedSuccessfully = true;
+          }
+        } catch (apiErr) {
+          console.warn('API update-order fallback to client SDK:', apiErr);
         }
-        if (error) throw error;
+
+        // 2. Direct client SDK update fallback if API route failed
+        if (!savedSuccessfully && supabase) {
+          let { error } = await supabase.from('orders').update(updates).eq('id', id);
+          if (error && (
+            error.message?.includes('assigned_gamer_ids') || 
+            error.message?.includes('daily_progress') || 
+            error.message?.includes('co_gamer_id') || 
+            error.message?.includes('progress_millions') || 
+            error.message?.includes('schema cache') ||
+            (error as any).code === '42703' ||
+            (error as any).code === 'PGRST204'
+          )) {
+            delete updates.assigned_gamer_ids;
+            delete updates.daily_progress;
+            delete updates.co_gamer_id;
+            delete updates.progress_millions;
+            const retryRes = await supabase.from('orders').update(updates).eq('id', id);
+            error = retryRes.error;
+          }
+          if (error) throw error;
+        }
 
         if (finalDailyProgress.length > 0) {
           saveLogsBackup(id, orderNumber, finalDailyProgress);
@@ -1442,10 +1473,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteOrder = async (id: string) => {
-    if (!isDemo && supabase) {
+    if (!isDemo) {
       try {
-        const { error } = await supabase.from('orders').delete().eq('id', id);
-        if (error) throw error;
+        let deletedApi = false;
+        try {
+          const apiRes = await fetch('/api/delete-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id })
+          });
+          const apiJson = await apiRes.json();
+          if (apiRes.ok && apiJson.success) deletedApi = true;
+        } catch {}
+
+        if (!deletedApi && supabase) {
+          const { error } = await supabase.from('orders').delete().eq('id', id);
+          if (error) throw error;
+        }
+
         setOrders((prev) => {
           const updated = prev.filter((o) => o.id !== id);
           safeLocalStorage.setItem('zampeak_orders', JSON.stringify(updated));
@@ -1453,7 +1498,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
         return { success: true };
       } catch (err: any) {
-        console.error('Supabase error, deleting order:', err);
+        console.error('Error deleting order:', err);
         return { success: false, error: err.message };
       }
     } else {
@@ -1472,13 +1517,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const todayDateStr = `${yyyy}-${mm}-${dd}`;
     const completedDate = status === 'Completed' ? todayDateStr : null;
 
-    if (!isDemo && supabase) {
+    if (!isDemo) {
       try {
-        const { error } = await supabase
-          .from('orders')
-          .update({ status, completed_date: completedDate })
-          .eq('id', id);
-        if (error) throw error;
+        let savedApi = false;
+        try {
+          const apiRes = await fetch('/api/update-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, updates: { status, completed_date: completedDate } })
+          });
+          const apiJson = await apiRes.json();
+          if (apiRes.ok && apiJson.success) savedApi = true;
+        } catch {}
+
+        if (!savedApi && supabase) {
+          const { error } = await supabase
+            .from('orders')
+            .update({ status, completed_date: completedDate })
+            .eq('id', id);
+          if (error) throw error;
+        }
 
         setOrders((prev) => {
           const updated = prev.map((o) => (o.id === id ? { ...o, status, completed_date: completedDate || undefined } : o));
@@ -1487,7 +1545,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
         return { success: true };
       } catch (err: any) {
-        console.error('Supabase error, updating status:', err);
+        console.error('Error updating status:', err);
         return { success: false, error: err.message };
       }
     } else {
