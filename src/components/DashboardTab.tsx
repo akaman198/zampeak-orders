@@ -148,7 +148,7 @@ export default function DashboardTab({
   }, {} as Record<string, number>);
 
   const teamSummaries = teamLeaders.map(tl => {
-    const members = gamers.filter(g => g.team_leader_id === tl.id);
+    const members = gamers.filter(g => g.team_leader_id === tl.id && g.status === 'active');
     const memberIds = members.map(m => m.id);
     const teamIds = [tl.id, ...memberIds];
     
@@ -187,6 +187,7 @@ export default function DashboardTab({
 
   // Gamers rankings (Assets Farmed in Millions during this cycle, synced from orders)
   const gamerFarmedStats = gamers
+    .filter(g => g.status === 'active')
     .map(g => ({ gamer: g, farmed: cycleGamerFarmedMap[g.id] || 0 }))
     .filter(g => g.farmed > 0)
     .sort((a, b) => b.farmed - a.farmed)
@@ -223,6 +224,7 @@ export default function DashboardTab({
   }, {} as Record<string, number>);
   
   const weeklyGamerStats = gamers
+    .filter(g => g.status === 'active')
     .map(g => ({ gamer: g, farmed: weeklyGamerFarmedMap[g.id] || 0 }))
     .filter(g => g.farmed > 0)
     .sort((a, b) => b.farmed - a.farmed)
@@ -230,7 +232,7 @@ export default function DashboardTab({
 
   const weeklyTeamStats = teamLeaders
     .map(tl => {
-      const members = gamers.filter(g => g.team_leader_id === tl.id);
+      const members = gamers.filter(g => g.team_leader_id === tl.id && g.status === 'active');
       const teamGamerIds = [tl.id, ...members.map(m => m.id)];
       const farmed = teamGamerIds.reduce((sum, id) => sum + (weeklyGamerFarmedMap[id] || 0), 0);
       return {

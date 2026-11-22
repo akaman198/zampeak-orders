@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useApp, getOrderRunners, getOrderProgressSummary, isGamerOnOrder } from '../context/AppContext';
-import { OrderStatus, AssetType, Order, ShiftType, OrderDailyProgress } from '../types';
+import { OrderStatus, AssetType, Order, ShiftType, OrderDailyProgress, Gamer } from '../types';
 import { 
   Gamepad2, 
   Search, 
@@ -286,10 +286,14 @@ export default function OrdersTab() {
   const openDailyLogModal = (order: Order) => {
     setActiveLogOrder(order);
     const runners = getOrderRunners(order);
+    const activeRunnerIds = runners.filter(rId => {
+      const g = gamers.find(gam => gam.id === rId);
+      return g && g.status === 'active';
+    });
     if (role === 'gamer' && gamerProfile && runners.includes(gamerProfile.id)) {
       setLogGamerId(gamerProfile.id);
     } else {
-      setLogGamerId(runners[0] || order.gamer_id);
+      setLogGamerId(activeRunnerIds[0] || runners[0] || order.gamer_id);
     }
     setLogVolume('');
     setLogNotes('');
@@ -359,13 +363,15 @@ export default function OrdersTab() {
   const filteredOrders = orders
     .filter(order => {
       const runners = getOrderRunners(order);
-      const runnerGamers = runners.map(id => gamers.find(g => g.id === id)).filter(Boolean);
+      const runnerGamers = runners
+        .map(id => gamers.find(g => g.id === id))
+        .filter((g): g is Gamer => !!g && g.status === 'active');
       
       const matchesSearch = 
         order.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
         runnerGamers.some(g => 
-          g?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          g?.employee_id.toLowerCase().includes(searchTerm.toLowerCase())
+          g.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          g.employee_id.toLowerCase().includes(searchTerm.toLowerCase())
         );
 
       const matchesStatus = statusFilter === 'All' || order.status === statusFilter;
@@ -483,7 +489,7 @@ export default function OrdersTab() {
             >
               <option value="All">All Operators</option>
               {gamers
-                .filter(g => g.gamer_role !== 'technical_manager')
+                .filter(g => g.status === 'active' && g.gamer_role !== 'technical_manager')
                 .map(g => (
                   <option key={g.id} value={g.id}>{g.name}</option>
                 ))
@@ -511,8 +517,8 @@ export default function OrdersTab() {
 
       {/* Deploy/Edit Order Dialog Overlay */}
       {isFormOpen && isManager && (
-        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="tactical-panel p-6 rounded clip-corners border border-cyber-cyan/40 w-full max-w-xl relative my-8">
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="tactical-panel p-6 rounded clip-corners border border-cyber-cyan/40 w-full max-w-xl max-h-[90vh] overflow-y-auto relative my-8">
             <div className="hud-grid"></div>
             
             <h3 className="font-mono font-bold text-sm text-cyber-cyan uppercase tracking-widest border-b border-cyber-cyan/20 pb-3 mb-5 flex justify-between items-center">
@@ -754,12 +760,12 @@ export default function OrdersTab() {
         const currentLogs = currentOrder.daily_progress || [];
 
         return (
-          <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-            <div className="tactical-panel p-6 rounded clip-corners border border-cyber-cyan/50 w-full max-w-2xl relative my-8 font-mono text-xs">
-              <div className="hud-grid"></div>
+          <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+            <div className="tactical-panel rounded clip-corners border border-cyber-cyan/50 w-full max-w-2xl max-h-[90vh] flex flex-col relative font-mono text-xs shadow-2xl overflow-hidden">
+              <div className="hud-grid pointer-events-none"></div>
 
               {/* Modal Header */}
-              <div className="flex justify-between items-start border-b border-cyber-cyan/30 pb-3 mb-4">
+              <div className="flex justify-between items-start border-b border-cyber-cyan/30 p-5 pb-3 shrink-0 bg-slate-950/90 z-10">
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-cyber-cyan font-black text-sm uppercase tracking-wider">
@@ -781,8 +787,8 @@ export default function OrdersTab() {
                 </button>
               </div>
 
-              {/* Order Progress Status Bar */}
-              <div className="space-y-4">
+              {/* Scrollable Modal Body */}
+              <div className="overflow-y-auto p-5 pt-3 space-y-4 flex-1">
                 {/* Progress Header Card */}
                 <div className="p-3 bg-slate-900/80 rounded border border-cyber-border/60 space-y-2">
                   <div className="flex justify-between items-center text-xs">
@@ -878,17 +884,18 @@ export default function OrdersTab() {
                           onChange={(e) => setLogGamerId(e.target.value)}
                           className="w-full bg-slate-950 border border-cyber-border rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-cyber-cyan cursor-pointer text-xs"
                         >
-                          {runners.map(rId => {
-                            const gamer = gamers.find(g => g.id === rId);
-                            return (
-                              <option key={rId} value={rId}>
-                                {gamer?.name || 'Unknown'} (ID: {gamer?.employee_id})
+                          {runners
+                            .map(rId => gamers.find(g => g.id === rId))
+                            .filter((gamer): gamer is Gamer => !!gamer && gamer.status === 'active')
+                            .map(gamer => (
+                              <option key={gamer.id} value={gamer.id}>
+                                {gamer.name} (ID: {gamer.employee_id})
                               </option>
-                            );
-                          })}
+                            ))
+                          }
                           {/* Allow picking another gamer if not in runners list */}
                           {filteredGamersForSelect
-                            .filter(g => !runners.includes(g.id) && g.gamer_role !== 'technical_manager')
+                            .filter(g => !runners.includes(g.id) && g.gamer_role !== 'technical_manager' && g.status === 'active')
                             .map(g => (
                               <option key={g.id} value={g.id}>
                                 + {g.name} (Assisting - ID: {g.employee_id})
@@ -976,9 +983,9 @@ export default function OrdersTab() {
                         No individual daily volume logs recorded yet for this order. Use the form above to record shift contributions.
                       </div>
                     ) : (
-                      <div className="max-h-60 overflow-y-auto rounded border border-cyber-border/40">
+                      <div className="max-h-72 overflow-y-auto rounded border border-cyber-border/40">
                         <table className="w-full text-left">
-                          <thead className="bg-slate-950 text-slate-400 uppercase text-[9px] border-b border-cyber-border/40 sticky top-0">
+                          <thead className="bg-slate-950 text-slate-400 uppercase text-[9px] border-b border-cyber-border/40 sticky top-0 z-10">
                             <tr>
                               <th className="p-2">Date</th>
                               <th className="p-2">Operator</th>

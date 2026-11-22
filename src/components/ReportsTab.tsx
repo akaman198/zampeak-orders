@@ -362,7 +362,10 @@ export default function ReportsTab() {
       const runnerIds = getOrderRunners(order);
       const runnerMatch = runnerIds.some(id => {
         const g = gamers.find(gam => gam.id === id);
-        return g?.name?.toLowerCase().includes(term) || g?.employee_id?.toLowerCase().includes(term);
+        return g && g.status === 'active' && (
+          g.name?.toLowerCase().includes(term) || 
+          g.employee_id?.toLowerCase().includes(term)
+        );
       });
       const notesMatch = (order.daily_progress || []).some(l => l.notes?.toLowerCase().includes(term));
       if (!numMatch && !runnerMatch && !notesMatch) return false;
@@ -1114,11 +1117,14 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key`;
                         className="w-full bg-slate-900 border border-cyber-border/60 rounded px-2 py-1 text-slate-200 text-[11px] focus:outline-none focus:border-cyber-cyan cursor-pointer truncate"
                       >
                         <option value="all">All Operators</option>
-                        {gamers.map(g => (
-                          <option key={g.id} value={g.id}>
-                            {g.name} ({g.employee_id})
-                          </option>
-                        ))}
+                        {gamers
+                          .filter(g => g.status === 'active')
+                          .map(g => (
+                            <option key={g.id} value={g.id}>
+                              {g.name} ({g.employee_id})
+                            </option>
+                          ))
+                        }
                       </select>
                     </div>
 

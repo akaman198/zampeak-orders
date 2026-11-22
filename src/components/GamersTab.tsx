@@ -39,7 +39,7 @@ export default function GamersTab() {
   const [isAdding, setIsAdding] = useState(false);
   const [isEditing, setIsEditing] = useState<Gamer | null>(null);
   const [dossierDailyDateFilter, setDossierDailyDateFilter] = useState<string>(todayStr);
-  const [gamerRosterFilter, setGamerRosterFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [gamerRosterFilter, setGamerRosterFilter] = useState<'all' | 'active' | 'inactive'>('active');
   const [rosterSearchQuery, setRosterSearchQuery] = useState('');
 
   // Form Fields
@@ -256,8 +256,13 @@ export default function GamersTab() {
   const inactiveGamersCount = gamers.filter(g => g.status === 'inactive').length;
 
   const filteredRosterGamers = gamers.filter(g => {
-    if (gamerRosterFilter === 'active' && g.status !== 'active') return false;
-    if (gamerRosterFilter === 'inactive' && g.status !== 'inactive') return false;
+    // If explicitly on inactive filter tab, allow searching/showing inactive gamers
+    if (gamerRosterFilter === 'inactive') {
+      if (g.status !== 'inactive') return false;
+    } else {
+      // By default or on 'all' / 'active', only active gamers appear and are searched
+      if (g.status !== 'active') return false;
+    }
     if (rosterSearchQuery.trim()) {
       const q = rosterSearchQuery.toLowerCase();
       return g.name.toLowerCase().includes(q) || g.employee_id.toLowerCase().includes(q);
