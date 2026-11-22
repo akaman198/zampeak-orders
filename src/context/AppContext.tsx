@@ -2222,12 +2222,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         let teamVolumeBonus = 0;
 
         if (isNewDate) {
-          // New Structure Daily Base: (K200/26 Attendance) + (K10 Transport) + (K200/26 TL Allowance if TL)
+          // New Structure Daily Base: (K200/26 Attendance) + (K10 Transport) + (K200/26 TL Allowance if TL) or Tech Mgr (K4500/26)
           if (isPresent) {
-            const dailyAttendance = 200 / 26; // ~7.69
-            const dailyTransport = 10;
-            const dailyTL = gamer.gamer_role === 'team_leader' ? (200 / 26) : 0;
-            basePayEarned = Number((dailyAttendance + dailyTransport + dailyTL).toFixed(2));
+            if (gamer.gamer_role === 'technical_manager') {
+              basePayEarned = Number((4500 / 26).toFixed(2));
+            } else {
+              const dailyAttendance = 200 / 26; // ~7.69
+              const dailyTransport = 10;
+              const dailyTL = gamer.gamer_role === 'team_leader' ? (200 / 26) : 0;
+              basePayEarned = Number((dailyAttendance + dailyTransport + dailyTL).toFixed(2));
+            }
           }
         } else {
           // Legacy Daily Base

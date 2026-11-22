@@ -106,9 +106,9 @@ export default function OrdersTab() {
   const isManager = role === 'admin' || (role === 'gamer' && gamerProfile?.gamer_role === 'technical_manager');
   const isAdminOrViewer = role === 'admin' || role === 'viewer' || (role === 'gamer' && gamerProfile?.gamer_role === 'technical_manager');
 
-  // Get active/standby gamers list (exclude technical manager)
+  // Get active/standby gamers list
   const getGamerRosterStatus = () => {
-    const activeGamers = gamers.filter(g => g.status === 'active' && g.gamer_role !== 'technical_manager');
+    const activeGamers = gamers.filter(g => g.status === 'active');
     
     return activeGamers.map(g => {
       // Find running orders assigned to this gamer
@@ -489,7 +489,7 @@ export default function OrdersTab() {
             >
               <option value="All">All Operators</option>
               {gamers
-                .filter(g => g.status === 'active' && g.gamer_role !== 'technical_manager')
+                .filter(g => g.status === 'active')
                 .map(g => (
                   <option key={g.id} value={g.id}>{g.name}</option>
                 ))
@@ -617,7 +617,7 @@ export default function OrdersTab() {
                         {assignedGamerIds.length === 0 ? 'Choose lead operator...' : 'Select operator to add...'}
                       </option>
                       {filteredGamersForSelect
-                        .filter(g => g.gamer_role !== 'technical_manager' && !assignedGamerIds.includes(g.id))
+                        .filter(g => !assignedGamerIds.includes(g.id))
                         .map(g => (
                           <option key={g.id} value={g.id}>{g.name} (ID: {g.employee_id})</option>
                         ))
@@ -895,7 +895,7 @@ export default function OrdersTab() {
                           }
                           {/* Allow picking another gamer if not in runners list */}
                           {filteredGamersForSelect
-                            .filter(g => !runners.includes(g.id) && g.gamer_role !== 'technical_manager' && g.status === 'active')
+                            .filter(g => !runners.includes(g.id) && g.status === 'active')
                             .map(g => (
                               <option key={g.id} value={g.id}>
                                 + {g.name} (Assisting - ID: {g.employee_id})

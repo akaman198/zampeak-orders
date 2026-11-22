@@ -486,7 +486,7 @@ export default function DashboardTab({
             {/* Card 1: Payout Summary */}
             {(() => {
               if (isAdminOrViewer) {
-                const activeOperators = gamers.filter(g => g.status === 'active' && g.gamer_role !== 'technical_manager');
+                const activeOperators = gamers.filter(g => g.status === 'active');
               const allPayrolls = activeOperators.map(g => calculatePayroll(g.id, selectedCycle));
               const centralExpectedPayout = allPayrolls.reduce((sum, p) => sum + p.totalPay, 0);
               const centralTotalOrdersCount = getOrdersInCycle(selectedCycle).length;
